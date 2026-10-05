@@ -1,8 +1,24 @@
 # Paper Reader
 
-本地运行的 AI 论文阅读工具：左侧论文库、中间 PDF 阅读器、右侧论文 Agent。
+[中文说明](README.zh-CN.md)
 
-## 启动
+Paper Reader is a local web app for reading research papers with an AI assistant beside the PDF. The layout stays on one screen: a folder tree on the left, a continuous PDF reader in the middle, and a Pi-powered chat on the right. Papers, translations, and settings remain on your machine, so the reading loop—import, open, annotate, and ask—happens without a hosted account.
+
+## Features
+
+- Import a local PDF or an arXiv `abs` / `pdf` link. When the file name or first page contains an arXiv id, Paper Reader fills in title, authors, year, and abstract from the arXiv API; otherwise it asks Pi to read the first page and extract the same fields.
+- Organize papers in a nested folder tree. Folders can be renamed, nested, or removed; a paper can be deleted on its own.
+- Read with PDF.js: continuous scrolling, page jump, zoom, and native text selection on the page. Crop mode captures a figure or table and attaches it to the next question.
+- Translate a selection through an OpenAI-compatible API. Translation is a side task, so it stays out of the chat transcript and is cached locally.
+- Ask Pi to summarize the paper, close-read the current section, explain a figure, or answer a free-form question. Replies stream in and render as Markdown. Enter sends a message; Ctrl+Enter inserts a newline.
+
+## Requirements
+
+- Node.js 22 or newer
+- [Pi](https://pi.dev), already installed and signed in, because the reading agent runs through the Pi CLI
+- An OpenAI-compatible endpoint if you want selection translation
+
+## Setup
 
 ```bash
 npm install
@@ -10,11 +26,9 @@ npm run build
 npm start
 ```
 
-浏览器访问 `http://127.0.0.1:3080`。
+Then open [http://127.0.0.1:3080](http://127.0.0.1:3080).
 
-## 模型配置
-
-翻译直接调用 OpenAI 兼容接口：
+Translation can also be set with environment variables before the first launch:
 
 ```bash
 export TRANSLATION_BASE_URL="https://api.openai.com/v1"
@@ -22,39 +36,29 @@ export TRANSLATION_API_KEY="your-key"
 export TRANSLATION_MODEL="gpt-4o-mini"
 ```
 
-论文概括、精读、问答和图片解释由已安装并已完成认证的 `pi` CLI 运行。可选配置：
+The same values, together with the Pi model id and thinking level, are editable later in the in-app **Settings** page at the bottom of the left sidebar.
 
-```bash
-export PI_MODEL="provider/model"
-export PI_THINKING="medium"
-```
+## Pi agent
 
-也可以使用本地 OpenAI 兼容服务作为翻译接口。论文文件和运行数据保存在 `.runtime/`，不会进入 Git。
+Summaries, section reading, figure explanations, and ordinary Q&A are delegated to [Pi](https://pi.dev), Earendil’s coding-agent CLI. Paper Reader starts Pi in JSON mode, loads project prompt templates for each task, and streams the assistant tokens into the right-hand chat. Translation is the exception: it calls the configured chat-completions endpoint directly, which keeps that path fast and separate from the agent session.
 
-## 开发
+Because Pi owns model login, default model, and thinking level, Paper Reader only passes through the values you set in **Settings** (or `PI_MODEL` / `PI_THINKING`). For install, `/login`, `/model`, and the rest of Pi’s own configuration, follow the [Pi configuration guide](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/configuration.md).
 
-服务端和前端分别运行：
+## Development
+
+Run the API and the Vite frontend separately:
 
 ```bash
 npm run dev:server
 npm run dev:web
 ```
 
-开发前端访问 `http://127.0.0.1:5173`，Vite 会把 `/api` 请求代理到 `3080`。
+The UI is at [http://127.0.0.1:5173](http://127.0.0.1:5173); Vite proxies `/api` to port `3080`.
 
-界面检查（需要先 `npm run build`，使用本机 Chrome，结果和截图写入 `.runtime/reader-ui-check/`）：
+After `npm run build`, a Chrome-based layout check is available:
 
 ```bash
 node scripts/check-reader-ui.mjs path/to/paper.pdf
 ```
 
-## 当前能力
-
-- 本地 PDF 和 arXiv 链接导入；本地 PDF 从文件名或首页文本识别 arXiv 编号并拉取元数据，识别不到时由 pi 从首页文本提取标题、作者和年份
-- 文件夹和论文目录
-- PDF.js 高清渲染、连续上下滚动阅读、缩放，PDF 页面上直接选择文字
-- 「框选图片」模式截取页面区域并附加到 Agent 上下文
-- 独立翻译任务与本地翻译缓存
-- pi 流式论文问答，回复按 Markdown 渲染；Enter 发送、Ctrl+Enter 换行
-- 可折叠文件夹树、文件夹右键重命名/递归删除/导入、论文右键删除
-- 设置页维护翻译模型、Pi 模型、思考强度和 prompt templates
+Local papers, translation cache, and settings live under `.runtime/`.

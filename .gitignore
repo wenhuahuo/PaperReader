@@ -6,3 +6,8 @@ dist/
 !.env.example
 .DS_Store
 *.log
+*.local
+.vscode/
+.idea/
+AGENT.md
+docs/
