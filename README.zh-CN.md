@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+![Paper Reader 演示](assets/paper-reader-demo.gif)
+
 Paper Reader 是一个在本地运行的论文阅读Web应用。应用中可以通过文件夹树管理文献，同时支持使用AI助手进行论文解读、读图和翻译。论文文件、译文缓存和模型设置都写在本机目录里，整条阅读流程都在本地完成。
 
 ## 功能

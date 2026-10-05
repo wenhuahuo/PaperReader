@@ -2,6 +2,8 @@
 
 [中文说明](README.zh-CN.md)
 
+![Paper Reader demo](assets/paper-reader-demo.gif)
+
 Paper Reader is a local web app for reading research papers. You can organize a library with a folder tree, and use an AI assistant to interpret the paper, read figures, and translate selections. PDFs, translation cache, and model settings are stored on your machine, so the whole reading workflow stays local.
 
 ## Features
