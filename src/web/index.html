@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paper Reader</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar left-sidebar">
+        <div class="brand"><span class="brand-mark">P</span><div><strong>Paper Reader</strong><small>AI 辅助阅读</small></div></div>
+        <div class="sidebar-actions">
+          <button id="uploadButton" class="primary-button">导入 PDF</button>
+          <input id="fileInput" type="file" accept="application/pdf" hidden />
+          <button id="folderButton" class="ghost-button">新建文件夹</button>
+        </div>
+        <form id="arxivForm" class="arxiv-form">
+          <input id="arxivInput" type="url" placeholder="粘贴 arXiv 链接" />
+          <button type="submit">导入</button>
+        </form>
+        <div id="libraryStatus" class="status-line"></div>
+        <div id="libraryTree" class="library-tree"></div>
+      </aside>
+
+      <main class="reader-column">
+        <header class="reader-header">
+          <div>
+            <div id="paperMeta" class="eyebrow">选择一篇论文开始阅读</div>
+            <h1 id="paperTitle">Paper Reader</h1>
+          </div>
+          <div class="reader-controls">
+            <button id="previousPage">‹</button>
+            <span><input id="pageInput" type="number" min="1" value="1" /> / <span id="pageCount">—</span></span>
+            <button id="nextPage">›</button>
+            <button id="zoomOut">−</button>
+            <span id="zoomLabel">100%</span>
+            <button id="zoomIn">+</button>
+          </div>
+        </header>
+        <section class="reader-stage" id="readerStage">
+          <div class="empty-state" id="emptyReader">从左侧导入或选择一篇论文</div>
+          <div class="pdf-page-wrap" id="pdfPageWrap" hidden>
+            <div class="canvas-wrap" id="canvasWrap">
+              <canvas id="pdfCanvas"></canvas>
+              <div id="cropBox" class="crop-box" hidden></div>
+            </div>
+            <div class="page-text-card">
+              <div class="text-toolbar"><div class="section-label">当前页文本 · 可选中</div><button id="translateSelection" class="translate-button">翻译选区</button></div>
+              <div id="pageText" class="page-text"></div>
+              <div class="muted crop-hint">在 PDF 页面上拖动框选区域，截图会附加到下一条消息。</div>
+            </div>
+          </div>
+        </section>
+        <section id="translationPanel" class="translation-panel" hidden>
+          <div class="panel-heading"><span>独立翻译</span><span id="translationStatus" class="muted"></span></div>
+          <div id="translationResult" class="translation-result"></div>
+        </section>
+      </main>
+
+      <aside class="sidebar right-sidebar">
+        <header class="chat-header">
+          <div><div class="eyebrow">PI AGENT</div><h2>论文助手</h2></div>
+          <span id="agentStatus" class="agent-status">就绪</span>
+        </header>
+        <div id="contextChips" class="context-chips"></div>
+        <div id="chatMessages" class="chat-messages">
+          <div class="welcome-card"><strong>从论文中提问</strong><p>概括全文、精读章节，或框选图表后让我解释。</p></div>
+        </div>
+        <div class="quick-actions">
+          <button data-prompt="请概括这篇论文的研究问题、方法、主要结果和局限。">概括全文</button>
+          <button data-prompt="请精读当前页对应的章节，解释关键概念和论证逻辑。">精读当前章节</button>
+          <button data-prompt="请解释当前图片或表格，并说明它支持的结论。">解释图片/表格</button>
+        </div>
+        <form id="chatForm" class="chat-composer">
+          <textarea id="chatInput" rows="3" placeholder="询问论文内容…"></textarea>
+          <div class="composer-row">
+            <label class="attach-button">添加图片<input id="imageInput" type="file" accept="image/*" hidden /></label>
+            <span id="imageStatus" class="muted"></span>
+            <button type="submit" class="send-button">发送</button>
+          </div>
+        </form>
+      </aside>
+    </div>
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
