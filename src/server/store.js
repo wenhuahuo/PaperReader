@@ -37,14 +37,6 @@ export function paperPdfPath(paperId) {
   return path.join(paperDirectory(paperId), 'original.pdf');
 }
 
-export function paperTextPath(paperId) {
-  return path.join(paperDirectory(paperId), 'content.txt');
-}
-
-export function paperManifestPath(paperId) {
-  return path.join(paperDirectory(paperId), 'manifest.json');
-}
-
 export function translationCachePath(paperId) {
   return path.join(rootDirectory, 'cache', 'translations', `${paperId}.json`);
 }
@@ -65,8 +57,6 @@ export function createPaperRecord(input) {
     importedAt: now,
     lastOpenedAt: now,
     currentPage: 1,
-    parseStatus: 'pending',
-    parseError: null,
   };
 }
 

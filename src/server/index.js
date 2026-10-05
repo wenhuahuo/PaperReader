@@ -10,15 +10,12 @@ import {
   saveIndex,
   paperDirectory,
   paperPdfPath,
-  paperTextPath,
-  paperManifestPath,
   translationCachePath,
   createPaperRecord,
 } from './store.js';
-import { extractPdfText } from './pdf.js';
 import { getArxivPaper } from './arxiv.js';
-import { translateText, translationSettings } from './model.js';
-import { relevantText } from './retrieval.js';
+import { translateText } from './model.js';
+import { getAppSettings, publicSettings, saveAppSettings, writePromptTemplates } from './settings.js';
 import { runPaperAgent } from './pi.js';
 
 const projectRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
@@ -35,6 +32,7 @@ const mimeTypes = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
+  '.mjs': 'text/javascript; charset=utf-8',
 };
 
 function sendJson(res, status, payload) {
@@ -67,7 +65,6 @@ function paperResponse(paper) {
   return {
     ...paper,
     pdfUrl: `/api/papers/${paper.id}/pdf`,
-    textUrl: `/api/papers/${paper.id}/text`,
   };
 }
 
@@ -90,18 +87,6 @@ async function importPdf({ pdfBuffer, metadata }) {
   const paper = createPaperRecord(metadata);
   await mkdir(paperDirectory(paper.id), { recursive: true });
   await writeFile(paperPdfPath(paper.id), pdfBuffer);
-  await writeFile(paperManifestPath(paper.id), JSON.stringify(paper, null, 2));
-
-  try {
-    await extractPdfText(paperPdfPath(paper.id), paperTextPath(paper.id));
-    paper.parseStatus = 'complete';
-  } catch (error) {
-    paper.parseStatus = 'failed';
-    paper.parseError = error.message;
-    await writeFile(paperTextPath(paper.id), '');
-  }
-  await writeFile(paperManifestPath(paper.id), JSON.stringify(paper, null, 2));
-
   const index = await readIndex();
   index.papers.unshift(paper);
   await saveIndex(index);
@@ -166,10 +151,13 @@ async function handleApi(req, res, url) {
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/settings') {
-    sendJson(res, 200, {
-      translationConfigured: Boolean(translationSettings().baseUrl && translationSettings().model),
-      piConfigured: Boolean(process.env.PI_COMMAND || 'pi'),
-    });
+    sendJson(res, 200, publicSettings(await getAppSettings()));
+    return;
+  }
+  if (req.method === 'PUT' && url.pathname === '/api/settings') {
+    const settings = await saveAppSettings(await readJsonBody(req));
+    await writePromptTemplates(settings);
+    sendJson(res, 200, publicSettings(settings));
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/library') {
@@ -182,10 +170,41 @@ async function handleApi(req, res, url) {
     const name = normalizeText(body.name);
     if (!name) throw new Error('文件夹名称不能为空');
     const index = await readIndex();
-    const folder = { id: cryptoRandomId(), name, parentId: body.parentId || null };
+    const parentId = body.parentId || null;
+    if (parentId && !index.folders.some((folder) => folder.id === parentId)) throw notFound('父文件夹不存在');
+    const folder = { id: cryptoRandomId(), name, parentId };
     index.folders.push(folder);
     await saveIndex(index);
     sendJson(res, 201, folder);
+    return;
+  }
+  if (req.method === 'PATCH' && segments[1] === 'folders' && segments[2]) {
+    const body = await readJsonBody(req);
+    const name = normalizeText(body.name);
+    if (!name) throw new Error('文件夹名称不能为空');
+    const index = await readIndex();
+    const folder = index.folders.find((item) => item.id === segments[2]);
+    if (!folder) throw notFound('文件夹不存在');
+    folder.name = name;
+    await saveIndex(index);
+    sendJson(res, 200, folder);
+    return;
+  }
+  if (req.method === 'DELETE' && segments[1] === 'folders' && segments[2]) {
+    const folderId = segments[2];
+    if (folderId === 'inbox') throw new Error('Inbox 文件夹用于保存默认导入论文，不能删除');
+    const index = await readIndex();
+    if (!index.folders.some((folder) => folder.id === folderId)) throw notFound('文件夹不存在');
+    const folderIds = collectFolderTree(index.folders, folderId);
+    const paperIds = index.papers.filter((paper) => folderIds.has(paper.folderId)).map((paper) => paper.id);
+    for (const paperId of paperIds) {
+      await rm(paperDirectory(paperId), { recursive: true, force: true });
+      await rm(translationCachePath(paperId), { force: true });
+    }
+    index.folders = index.folders.filter((folder) => !folderIds.has(folder.id));
+    index.papers = index.papers.filter((paper) => !paperIds.includes(paper.id));
+    await saveIndex(index);
+    sendJson(res, 200, { deletedFolderIds: [...folderIds], deletedPaperIds: paperIds });
     return;
   }
   if (req.method === 'POST' && url.pathname === '/api/papers/upload') {
@@ -209,11 +228,6 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && action === 'pdf') {
     res.writeHead(200, { 'content-type': 'application/pdf', 'cache-control': 'no-cache' });
     createReadStream(paperPdfPath(paperId)).pipe(res);
-    return;
-  }
-  if (req.method === 'GET' && action === 'text') {
-    const text = await readFile(paperTextPath(paperId), 'utf8');
-    sendJson(res, 200, { text });
     return;
   }
   if (req.method === 'POST' && action === 'position') {
@@ -241,12 +255,11 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const question = normalizeText(body.question);
     if (!question) throw new Error('问题不能为空');
-    const text = await readFile(paperTextPath(paperId), 'utf8');
     const context = {
       paper,
       page: body.page,
       selectedText: normalizeText(body.selectedText),
-      paperText: relevantText(text, question),
+      currentPageText: normalizeText(body.pageText),
     };
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -259,6 +272,7 @@ async function handleApi(req, res, url) {
         question,
         context,
         imageData: body.imageData,
+        task: body.task || 'question',
         onDelta: (delta) => emit('token', { text: delta }),
       });
       emit('done', { ok: true });
@@ -279,6 +293,21 @@ async function handleApi(req, res, url) {
   throw notFound('接口不存在');
 }
 
+function collectFolderTree(folders, rootId) {
+  const result = new Set([rootId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const folder of folders) {
+      if (folder.parentId && result.has(folder.parentId) && !result.has(folder.id)) {
+        result.add(folder.id);
+        changed = true;
+      }
+    }
+  }
+  return result;
+}
+
 function cryptoRandomId() {
   return `folder-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 }
@@ -293,6 +322,7 @@ async function serveStatic(res, pathname) {
 }
 
 await ensureStore();
+await writePromptTemplates(await getAppSettings());
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   try {

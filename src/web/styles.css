@@ -32,7 +32,28 @@ button, .attach-button { border: 0; border-radius: 8px; padding: 9px 10px; font-
 .arxiv-form input { min-width: 0; flex: 1; padding: 9px; font-size: 11px; }
 .arxiv-form button { color: var(--blue); background: var(--blue-soft); padding-inline: 11px; }
 .status-line, .muted, .eyebrow { color: var(--muted); font-size: 11px; }
-.library-tree { overflow: auto; padding-right: 3px; }
+.library-tree { min-height: 0; overflow: auto; padding-right: 3px; }
+.settings-button { margin-top: auto; color: #647083; background: #f3f5f8; text-align: left; }
+.folder-node { margin-left: calc(var(--depth) * 12px); }
+.folder-title { cursor: context-menu; }
+.folder-title.selected-folder { color: #293c98; background: var(--blue-soft); border-radius: 8px; }
+.folder-children { margin-left: 2px; }
+.folder-menu { position: fixed; z-index: 20; min-width: 150px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: 0 12px 30px rgba(27, 39, 65, .18); }
+.folder-menu button { display: block; width: 100%; padding: 8px 10px; color: #4d596a; background: transparent; text-align: left; }
+.folder-menu button:hover { background: #f3f5f8; }
+.folder-menu .danger-action { color: #c04444; }
+.settings-view { min-height: 100vh; overflow: auto; background: #f4f5f8; }
+.settings-header { display: flex; align-items: center; justify-content: space-between; padding: 26px max(28px, calc((100vw - 900px) / 2)); border-bottom: 1px solid var(--line); background: white; }
+.settings-header h1 { margin: 4px 0 0; font-size: 22px; }
+.settings-form { max-width: 900px; margin: 24px auto 60px; padding: 0 24px; }
+.settings-card { margin-bottom: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.settings-card h2 { margin: 0; font-size: 15px; }
+.settings-help { margin: 6px 0 18px; color: var(--muted); font-size: 12px; }
+.settings-card label { display: block; margin-top: 13px; color: #546074; font-size: 12px; }
+.settings-card input, .settings-card select, .settings-card textarea { display: block; width: 100%; margin-top: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; outline: none; background: #fafbfc; color: #263244; }
+.settings-card textarea { resize: vertical; line-height: 1.55; }
+.settings-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.settings-actions .primary-button { padding-inline: 20px; }
 .folder { margin-bottom: 10px; }
 .folder-title { display: flex; gap: 6px; align-items: center; padding: 6px 8px; color: #647083; font-size: 11px; font-weight: 700; }
 .paper-item { display: block; width: 100%; padding: 9px 9px 9px 25px; border-radius: 9px; color: #424e60; background: transparent; text-align: left; }

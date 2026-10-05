@@ -6,7 +6,7 @@
     <title>Paper Reader</title>
   </head>
   <body>
-    <div class="app-shell">
+    <div id="appShell" class="app-shell">
       <aside class="sidebar left-sidebar">
         <div class="brand"><span class="brand-mark">P</span><div><strong>Paper Reader</strong><small>AI 辅助阅读</small></div></div>
         <div class="sidebar-actions">
@@ -20,6 +20,7 @@
         </form>
         <div id="libraryStatus" class="status-line"></div>
         <div id="libraryTree" class="library-tree"></div>
+        <button id="settingsButton" class="settings-button">⚙ 设置</button>
       </aside>
 
       <main class="reader-column">
@@ -67,9 +68,9 @@
           <div class="welcome-card"><strong>从论文中提问</strong><p>概括全文、精读章节，或框选图表后让我解释。</p></div>
         </div>
         <div class="quick-actions">
-          <button data-prompt="请概括这篇论文的研究问题、方法、主要结果和局限。">概括全文</button>
-          <button data-prompt="请精读当前页对应的章节，解释关键概念和论证逻辑。">精读当前章节</button>
-          <button data-prompt="请解释当前图片或表格，并说明它支持的结论。">解释图片/表格</button>
+          <button data-task="summary" data-prompt="请概括这篇论文的研究问题、方法、主要结果和局限。">概括全文</button>
+          <button data-task="section" data-prompt="请精读当前页对应的章节，解释关键概念和论证逻辑。">精读当前章节</button>
+          <button data-task="figure" data-prompt="请解释当前图片或表格，并说明它支持的结论。">解释图片/表格</button>
         </div>
         <form id="chatForm" class="chat-composer">
           <textarea id="chatInput" rows="3" placeholder="询问论文内容…"></textarea>
@@ -81,6 +82,33 @@
         </form>
       </aside>
     </div>
+    <div id="folderMenu" class="folder-menu" hidden>
+      <button data-action="rename">重命名</button>
+      <button data-action="new-child">新建子文件夹</button>
+      <button data-action="import">导入论文</button>
+      <button data-action="delete" class="danger-action">删除文件夹</button>
+    </div>
+    <section id="settingsView" class="settings-view" hidden>
+      <header class="settings-header"><div><div class="eyebrow">PAPER READER</div><h1>助手设置</h1></div><button id="closeSettings" class="ghost-button">返回阅读</button></header>
+      <form id="settingsForm" class="settings-form">
+        <section class="settings-card"><h2>翻译模型</h2><p class="settings-help">翻译任务直接调用 OpenAI 兼容接口。</p>
+          <label>Base URL<input id="translationBaseUrl" type="url" placeholder="https://api.openai.com/v1" /></label>
+          <label>模型名称<input id="translationModel" placeholder="gpt-4o-mini" /></label>
+          <label>API Key<input id="translationApiKey" type="password" placeholder="已配置时留空保持" /></label>
+        </section>
+        <section class="settings-card"><h2>论文阅读模型</h2><p class="settings-help">概括、精读、问答和图片解释通过 pi 运行。</p>
+          <label>Pi 模型<input id="agentModel" placeholder="留空使用 Pi 默认模型" /></label>
+          <label>思考强度<select id="agentThinking"><option value="off">off</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label>
+        </section>
+        <section class="settings-card settings-prompts"><h2>Prompt Templates</h2><p class="settings-help">这些内容会写入运行时 Pi prompt template，并用于对应快捷操作。</p>
+          <label>概括全文<textarea id="summaryPrompt" rows="4"></textarea></label>
+          <label>精读当前章节<textarea id="sectionPrompt" rows="4"></textarea></label>
+          <label>解释图片/表格<textarea id="figurePrompt" rows="4"></textarea></label>
+          <label>普通问答<textarea id="questionPrompt" rows="4"></textarea></label>
+        </section>
+        <div class="settings-actions"><span id="settingsStatus" class="muted"></span><button type="submit" class="primary-button">保存设置</button></div>
+      </form>
+    </section>
     <div id="toast" class="toast" hidden></div>
     <script type="module" src="./app.js"></script>
   </body>

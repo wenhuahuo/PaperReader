@@ -1,3 +1,5 @@
+import { getAppSettings } from './settings.js';
+
 function chatEndpoint(baseUrl) {
   const normalized = String(baseUrl ?? '').replace(/\/+$/, '');
   return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
@@ -9,16 +11,13 @@ function contentText(content) {
   return '';
 }
 
-export function translationSettings() {
-  return {
-    baseUrl: process.env.TRANSLATION_BASE_URL ?? '',
-    apiKey: process.env.TRANSLATION_API_KEY ?? '',
-    model: process.env.TRANSLATION_MODEL ?? '',
-  };
+export async function translationSettings() {
+  const settings = await getAppSettings();
+  return settings.translation;
 }
 
 export async function translateText({ text, sourceLanguage, targetLanguage }) {
-  const settings = translationSettings();
+  const settings = await translationSettings();
   if (!settings.baseUrl || !settings.model) {
     throw new Error('请配置 TRANSLATION_BASE_URL 和 TRANSLATION_MODEL');
   }
