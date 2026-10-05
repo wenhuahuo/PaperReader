@@ -42,13 +42,19 @@ npm run dev:web
 
 开发前端访问 `http://127.0.0.1:5173`，Vite 会把 `/api` 请求代理到 `3080`。
 
+界面检查（需要先 `npm run build`，使用本机 Chrome，结果和截图写入 `.runtime/reader-ui-check/`）：
+
+```bash
+node scripts/check-reader-ui.mjs path/to/paper.pdf
+```
+
 ## 当前能力
 
 - 本地 PDF 和 arXiv 链接导入
 - 文件夹和论文目录
-- PDF.js 页面渲染、翻页、缩放和当前页文本
-- 页面区域截图并附加到 Agent 上下文
+- PDF.js 高清渲染、翻页、缩放，PDF 页面上直接选择文字
+- 「框选图片」模式截取页面区域并附加到 Agent 上下文
 - 独立翻译任务与本地翻译缓存
 - pi 流式论文问答
-- 文件夹树、右键重命名/递归删除/导入
+- 可折叠文件夹树、文件夹右键重命名/递归删除/导入、论文右键删除
 - 设置页维护翻译模型、Pi 模型、思考强度和 prompt templates

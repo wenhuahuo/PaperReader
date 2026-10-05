@@ -285,6 +285,7 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'DELETE' && !action) {
     await rm(paperDirectory(paperId), { recursive: true, force: true });
+    await rm(translationCachePath(paperId), { force: true });
     index.papers = index.papers.filter((item) => item.id !== paperId);
     await saveIndex(index);
     sendJson(res, 200, { ok: true });

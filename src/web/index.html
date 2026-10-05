@@ -36,6 +36,8 @@
             <button id="zoomOut">−</button>
             <span id="zoomLabel">100%</span>
             <button id="zoomIn">+</button>
+            <button id="translateSelection" class="reader-tool">翻译选区</button>
+            <button id="cropToggle" class="reader-tool">框选图片</button>
           </div>
         </header>
         <section class="reader-stage" id="readerStage">
@@ -43,12 +45,8 @@
           <div class="pdf-page-wrap" id="pdfPageWrap" hidden>
             <div class="canvas-wrap" id="canvasWrap">
               <canvas id="pdfCanvas"></canvas>
+              <div id="textLayer" class="textLayer"></div>
               <div id="cropBox" class="crop-box" hidden></div>
-            </div>
-            <div class="page-text-card">
-              <div class="text-toolbar"><div class="section-label">当前页文本 · 可选中</div><button id="translateSelection" class="translate-button">翻译选区</button></div>
-              <div id="pageText" class="page-text"></div>
-              <div class="muted crop-hint">在 PDF 页面上拖动框选区域，截图会附加到下一条消息。</div>
             </div>
           </div>
         </section>
@@ -82,7 +80,10 @@
         </form>
       </aside>
     </div>
-    <div id="folderMenu" class="folder-menu" hidden>
+    <div id="paperMenu" class="context-menu" hidden>
+      <button data-action="delete" class="danger-action">删除论文</button>
+    </div>
+    <div id="folderMenu" class="context-menu" hidden>
       <button data-action="rename">重命名</button>
       <button data-action="new-child">新建子文件夹</button>
       <button data-action="import">导入论文</button>

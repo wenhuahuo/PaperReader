@@ -9,10 +9,16 @@ const state = {
   papers: [],
   selectedPaper: null,
   importFolderId: 'inbox',
+  collapsedFolders: new Set(),
   contextFolderId: null,
+  contextPaperId: null,
   pdf: null,
+  renderTask: null,
   page: 1,
   zoom: 1,
+  pageText: '',
+  selectedText: '',
+  cropMode: false,
   selectedImage: null,
   selectedImageLabel: '',
   agentBusy: false,
@@ -53,24 +59,35 @@ function renderLibrary() {
     const node = document.createElement('div');
     node.className = 'folder-node';
     node.style.setProperty('--depth', depth);
+    const collapsed = state.collapsedFolders.has(folder.id);
     const title = document.createElement('div');
     title.className = `folder-title${state.importFolderId === folder.id ? ' selected-folder' : ''}`;
-    title.textContent = `📁 ${folder.name}`;
-    title.title = '左键选择导入位置，右键打开文件夹菜单';
+    title.innerHTML = `<span class="folder-caret">${collapsed ? '▸' : '▾'}</span>📁 ${escapeHtml(folder.name)}`;
+    title.title = '左键展开/收起并选为导入位置，右键打开文件夹菜单';
     title.addEventListener('click', () => {
       state.importFolderId = folder.id;
+      if (collapsed) state.collapsedFolders.delete(folder.id);
+      else state.collapsedFolders.add(folder.id);
       renderLibrary();
     });
-    title.addEventListener('contextmenu', (event) => showFolderMenu(event, folder));
+    title.addEventListener('contextmenu', (event) => {
+      state.contextFolderId = folder.id;
+      showMenu($('folderMenu'), event);
+    });
     node.append(title);
 
     const children = document.createElement('div');
     children.className = 'folder-children';
+    children.hidden = collapsed;
     for (const paper of state.papers.filter((item) => item.folderId === folder.id)) {
       const button = document.createElement('button');
       button.className = `paper-item${state.selectedPaper?.id === paper.id ? ' selected' : ''}`;
       button.innerHTML = `<strong>${escapeHtml(paper.title)}</strong><small>${paper.year || '本地导入'}</small>`;
       button.addEventListener('click', () => selectPaper(paper));
+      button.addEventListener('contextmenu', (event) => {
+        state.contextPaperId = paper.id;
+        showMenu($('paperMenu'), event);
+      });
       children.append(button);
     }
     for (const child of foldersByParent.get(folder.id) || []) children.append(renderFolder(child, depth + 1));
@@ -83,18 +100,17 @@ function renderLibrary() {
   $('libraryStatus').textContent = `${state.papers.length} 篇论文`;
 }
 
-function showFolderMenu(event, folder) {
+function showMenu(menu, event) {
   event.preventDefault();
-  state.contextFolderId = folder.id;
-  const menu = $('folderMenu');
+  hideMenus();
   menu.hidden = false;
-  menu.style.left = `${Math.min(event.clientX, window.innerWidth - 170)}px`;
-  menu.style.top = `${Math.min(event.clientY, window.innerHeight - 190)}px`;
+  menu.style.left = `${Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8)}px`;
+  menu.style.top = `${Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8)}px`;
 }
 
-function hideFolderMenu() {
+function hideMenus() {
   $('folderMenu').hidden = true;
-  state.contextFolderId = null;
+  $('paperMenu').hidden = true;
 }
 
 async function loadLibrary() {
@@ -102,12 +118,15 @@ async function loadLibrary() {
   state.folders = library.folders;
   state.papers = library.papers;
   if (!state.folders.some((folder) => folder.id === state.importFolderId)) state.importFolderId = 'inbox';
+  if (state.selectedPaper && !state.papers.some((paper) => paper.id === state.selectedPaper.id)) clearReader();
   renderLibrary();
 }
 
 function clearReader() {
   state.selectedPaper = null;
   state.pdf = null;
+  state.pageText = '';
+  state.selectedText = '';
   $('emptyReader').hidden = false;
   $('pdfPageWrap').hidden = true;
   $('translationPanel').hidden = true;
@@ -143,15 +162,34 @@ async function renderPage() {
   if (!state.pdf) return;
   state.page = Math.min(Math.max(1, state.page), state.pdf.numPages);
   $('pageInput').value = state.page;
+  state.selectedText = '';
+  state.renderTask?.cancel();
   const page = await state.pdf.getPage(state.page);
   const viewport = page.getViewport({ scale: state.zoom * 1.35 });
+  const outputScale = window.devicePixelRatio;
   const canvas = $('pdfCanvas');
-  const context = canvas.getContext('2d', { alpha: false });
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
-  await page.render({ canvasContext: context, viewport }).promise;
+  canvas.width = Math.floor(viewport.width * outputScale);
+  canvas.height = Math.floor(viewport.height * outputScale);
+  canvas.style.width = `${Math.floor(viewport.width)}px`;
+  canvas.style.height = `${Math.floor(viewport.height)}px`;
+  const renderTask = page.render({
+    canvasContext: canvas.getContext('2d', { alpha: false }),
+    viewport,
+    transform: [outputScale, 0, 0, outputScale, 0, 0],
+  });
+  state.renderTask = renderTask;
+  try {
+    await renderTask.promise;
+  } catch (error) {
+    if (error instanceof pdfjsLib.RenderingCancelledException) return;
+    throw error;
+  }
   const textContent = await page.getTextContent();
-  $('pageText').textContent = textContent.items.map((item) => item.str).join(' ');
+  const textLayer = $('textLayer');
+  textLayer.replaceChildren();
+  textLayer.style.setProperty('--total-scale-factor', viewport.scale);
+  await new pdfjsLib.TextLayer({ textContentSource: textContent, container: textLayer, viewport }).render();
+  state.pageText = textContent.items.map((item) => item.str).join(' ');
   $('zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
   updateContextChips();
   try {
@@ -163,14 +201,23 @@ async function renderPage() {
   }
 }
 
-function selectedText() {
-  return window.getSelection()?.toString().trim() || '';
+function trackPdfSelection() {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || !$('textLayer').contains(selection.anchorNode)) return;
+  state.selectedText = selection.toString().trim();
+  updateContextChips();
+}
+
+function setCropMode(enabled) {
+  state.cropMode = enabled;
+  $('canvasWrap').classList.toggle('crop-mode', enabled);
+  $('cropToggle').classList.toggle('active', enabled);
 }
 
 async function translateSelection() {
-  const text = selectedText();
+  const text = state.selectedText;
   if (!state.selectedPaper) return showToast('请先选择一篇论文');
-  if (!text) return showToast('请先在当前页文本中选中内容');
+  if (!text) return showToast('请先在 PDF 页面中选中文字');
   $('translationPanel').hidden = false;
   $('translationStatus').textContent = '翻译中…';
   $('translationResult').textContent = '';
@@ -203,7 +250,7 @@ function updateContextChips() {
   chips.innerHTML = '';
   if (state.selectedPaper) chips.append(chip(`论文：${state.selectedPaper.title}`));
   chips.append(chip(`第 ${state.page} 页`));
-  if (selectedText()) chips.append(chip('已选中文本'));
+  if (state.selectedText) chips.append(chip('已选中文本'));
   if (state.selectedImage) chips.append(chip(state.selectedImageLabel || '已附加图片'));
 }
 
@@ -227,8 +274,8 @@ async function sendQuestion(question, task = 'question') {
     question,
     task,
     page: state.page,
-    pageText: $('pageText').textContent,
-    selectedText: selectedText(),
+    pageText: state.pageText,
+    selectedText: state.selectedText,
     imageData: state.selectedImage,
   };
   try {
@@ -276,7 +323,7 @@ function setupCropSelection() {
   const wrap = $('canvasWrap');
   let start = null;
   wrap.addEventListener('pointerdown', (event) => {
-    if (!state.pdf) return;
+    if (!state.pdf || !state.cropMode) return;
     const rect = canvas.getBoundingClientRect();
     start = { x: event.clientX - rect.left, y: event.clientY - rect.top, rect };
     $('cropBox').hidden = false;
@@ -301,7 +348,9 @@ function setupCropSelection() {
     const left = Math.min(start.x, x); const top = Math.min(start.y, y);
     const width = Math.abs(x - start.x); const height = Math.abs(y - start.y);
     start = null;
-    if (width < 10 || height < 10) { $('cropBox').hidden = true; return; }
+    $('cropBox').hidden = true;
+    if (width < 10 || height < 10) return;
+    setCropMode(false);
     const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
     const crop = document.createElement('canvas');
     crop.width = Math.round(width * scaleX); crop.height = Math.round(height * scaleY);
@@ -309,7 +358,6 @@ function setupCropSelection() {
     state.selectedImage = crop.toDataURL('image/png');
     state.selectedImageLabel = '已框选图片';
     $('imageStatus').textContent = '截图已附加';
-    $('cropBox').hidden = true;
     updateContextChips();
   });
 }
@@ -397,10 +445,20 @@ $('folderButton').addEventListener('click', async () => {
     await loadLibrary();
   } catch (error) { showToast(error.message); }
 });
+$('paperMenu').addEventListener('click', async (event) => {
+  const paper = state.papers.find((item) => item.id === state.contextPaperId);
+  hideMenus();
+  if (!paper || event.target.dataset.action !== 'delete') return;
+  if (!window.confirm(`删除论文“${paper.title}”？`)) return;
+  try {
+    await request(`/api/papers/${paper.id}`, { method: 'DELETE' });
+    await loadLibrary();
+  } catch (error) { showToast(error.message); }
+});
 $('folderMenu').addEventListener('click', async (event) => {
   const action = event.target.dataset.action;
   const folder = state.folders.find((item) => item.id === state.contextFolderId);
-  hideFolderMenu();
+  hideMenus();
   if (!folder || !action) return;
   try {
     if (action === 'rename') {
@@ -421,7 +479,6 @@ $('folderMenu').addEventListener('click', async (event) => {
     if (action === 'delete') {
       if (!window.confirm(`删除“${folder.name}”及其中的论文和子文件夹？`)) return;
       await request(`/api/folders/${folder.id}`, { method: 'DELETE' });
-      clearReader();
     }
     await loadLibrary();
   } catch (error) { showToast(error.message); }
@@ -429,7 +486,11 @@ $('folderMenu').addEventListener('click', async (event) => {
 $('settingsButton').addEventListener('click', openSettings);
 $('closeSettings').addEventListener('click', () => { $('settingsView').hidden = true; $('appShell').hidden = false; });
 $('settingsForm').addEventListener('submit', saveSettings);
-document.addEventListener('click', (event) => { if (!$('folderMenu').contains(event.target)) hideFolderMenu(); });
+document.addEventListener('click', (event) => {
+  if (!$('folderMenu').contains(event.target) && !$('paperMenu').contains(event.target)) hideMenus();
+});
+document.addEventListener('selectionchange', trackPdfSelection);
+$('cropToggle').addEventListener('click', () => setCropMode(!state.cropMode));
 $('previousPage').addEventListener('click', async () => { state.page -= 1; await renderPage(); });
 $('nextPage').addEventListener('click', async () => { state.page += 1; await renderPage(); });
 $('pageInput').addEventListener('change', async (event) => { state.page = Number(event.target.value); await renderPage(); });
