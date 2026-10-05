@@ -4,6 +4,10 @@
 
 ## 启动
 
+给同事、不熟悉终端的人请看 [使用说明](docs/使用说明.md)。Mac 可双击 `scripts/start.command`，Windows 可双击 `scripts/start.bat`。
+
+开发者在项目目录执行：
+
 ```bash
 npm install
 npm run build
