@@ -118,6 +118,8 @@ button, .attach-button { border: 0; border-radius: 8px; padding: 9px 10px; font-
 .markdown table { display: block; overflow-x: auto; border-collapse: collapse; }
 .markdown th, .markdown td { padding: 4px 7px; border: 1px solid var(--line); }
 .markdown a { color: var(--blue); }
+.markdown .katex { font-size: 1.08em; }
+.markdown .katex-display, .markdown .math-block { margin: 8px 0; overflow-x: auto; overflow-y: hidden; }
 .quick-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 15px; border-top: 1px solid var(--line); }
 .quick-actions button { padding: 6px 8px; color: #59657a; background: #f3f5f8; font-size: 10px; }
 .chat-composer { padding: 12px 15px 15px; border-top: 1px solid var(--line); }

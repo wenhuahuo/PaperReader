@@ -1,7 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import 'katex/dist/katex.min.css';
+import { renderMarkdownSource } from './markdown.js';
 import './styles.css';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -294,7 +295,10 @@ async function translateSelection() {
 }
 
 function renderMarkdown(text) {
-  return DOMPurify.sanitize(marked.parse(text));
+  return DOMPurify.sanitize(renderMarkdownSource(text), {
+    ADD_TAGS: ['annotation', 'math', 'menclose', 'merror', 'mfenced', 'mfrac', 'mi', 'mmultiscripts', 'mn', 'mo', 'mover', 'mpadded', 'mphantom', 'mroot', 'mrow', 'ms', 'mspace', 'msqrt', 'mstyle', 'msub', 'msubsup', 'msup', 'mtable', 'mtd', 'mtext', 'mtr', 'munder', 'munderover', 'semantics'],
+    ADD_ATTR: ['aria-hidden', 'class', 'encoding', 'style', 'xmlns'],
+  });
 }
 
 function addMessage(role, text = '') {
