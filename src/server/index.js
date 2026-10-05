@@ -3,7 +3,7 @@ import path from 'node:path';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { cleanPaperTitle, normalizeText } from '../shared/paper.js';
+import { cleanPaperTitle, findLocalArxivId, normalizeText } from '../shared/paper.js';
 import {
   ensureStore,
   readIndex,
@@ -16,7 +16,7 @@ import {
 import { getArxivPaper } from './arxiv.js';
 import { translateText } from './model.js';
 import { getAppSettings, publicSettings, saveAppSettings, writePromptTemplates } from './settings.js';
-import { runPaperAgent } from './pi.js';
+import { extractPaperMetadata, runPaperAgent } from './pi.js';
 
 const projectRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const staticRoot = path.join(projectRoot, 'dist');
@@ -97,11 +97,26 @@ async function importLocalPdf(body) {
   const match = String(body.data ?? '').match(/^data:application\/pdf;base64,(.+)$/s);
   if (!match) throw new Error('上传内容必须是 PDF data URL');
   const fileName = String(body.fileName || 'paper.pdf').replace(/[/\\]/g, '-');
-  const title = cleanPaperTitle(fileName.replace(/\.pdf$/i, '')) || '未命名论文';
-  return importPdf({
+  const firstPageText = normalizeText(body.firstPageText);
+  let metadata = { title: cleanPaperTitle(fileName.replace(/\.pdf$/i, '')) || '未命名论文' };
+  let metadataError = null;
+  try {
+    const local = findLocalArxivId(fileName, firstPageText);
+    if (local) {
+      const arxiv = await getArxivPaper(`arXiv:${local.arxivId}`);
+      metadata = { ...arxiv, version: local.version ?? arxiv.version };
+    } else {
+      if (!firstPageText) throw new Error('PDF 首页没有可识别的文本');
+      metadata = { ...(await extractPaperMetadata(firstPageText)), sourceUrl: '' };
+    }
+  } catch (error) {
+    metadataError = error.message;
+  }
+  const paper = await importPdf({
     pdfBuffer: Buffer.from(match[1], 'base64'),
-    metadata: { title, fileName, folderId: body.folderId },
+    metadata: { ...metadata, title: cleanPaperTitle(metadata.title), fileName, folderId: body.folderId },
   });
+  return { paper, metadataError };
 }
 
 async function importArxivPdf(body) {
@@ -208,8 +223,8 @@ async function handleApi(req, res, url) {
     return;
   }
   if (req.method === 'POST' && url.pathname === '/api/papers/upload') {
-    const paper = await importLocalPdf(await readJsonBody(req));
-    sendJson(res, 201, paperResponse(paper));
+    const { paper, metadataError } = await importLocalPdf(await readJsonBody(req));
+    sendJson(res, 201, { ...paperResponse(paper), metadataError });
     return;
   }
   if (req.method === 'POST' && url.pathname === '/api/papers/arxiv') {

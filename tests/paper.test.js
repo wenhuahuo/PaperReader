@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractArxivId, cleanPaperTitle } from '../src/shared/paper.js';
+import { extractArxivId, cleanPaperTitle, findLocalArxivId } from '../src/shared/paper.js';
 
 test('extracts arXiv identifiers from abs, pdf, and arXiv forms', () => {
   assert.equal(extractArxivId('https://arxiv.org/abs/2401.12345'), '2401.12345');
@@ -9,6 +9,13 @@ test('extracts arXiv identifiers from abs, pdf, and arXiv forms', () => {
   assert.equal(extractArxivId('not an arxiv link'), null);
 });
 
+test('finds arXiv identifiers in local file names and first-page text', () => {
+  assert.deepEqual(findLocalArxivId('2606.16926v1.pdf', ''), { arxivId: '2606.16926', version: 'v1' });
+  assert.deepEqual(findLocalArxivId('paper.pdf', 'Title\narXiv:2605.09165v2 [cs.LG] 30 Jun 2026'), { arxivId: '2605.09165', version: 'v2' });
+  assert.deepEqual(findLocalArxivId('paper.pdf', 'arXiv:hep-th/9901001v1'), { arxivId: 'hep-th/9901001', version: 'v1' });
+  assert.equal(findLocalArxivId('my-notes.pdf', 'No identifier here'), null);
+});
+
 test('cleans a paper title for local metadata', () => {
-  assert.equal(cleanPaperTitle('  A  /  Study: Test?  '), 'A - Study- Test-');
+  assert.equal(cleanPaperTitle('  BERT:\n  Pre-training   of Transformers?  '), 'BERT: Pre-training of Transformers?');
 });

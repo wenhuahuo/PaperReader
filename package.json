@@ -11,6 +11,8 @@
     "start": "node src/server/index.js"
   },
   "dependencies": {
+    "dompurify": "^3.4.16",
+    "marked": "^18.0.14",
     "pdfjs-dist": "^5.4.149"
   },
   "devDependencies": {

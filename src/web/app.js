@@ -1,5 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import './styles.css';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -13,10 +15,11 @@ const state = {
   contextFolderId: null,
   contextPaperId: null,
   pdf: null,
-  renderTask: null,
+  renderId: 0,
+  pageObserver: null,
+  savePositionTimer: null,
   page: 1,
   zoom: 1,
-  pageText: '',
   selectedText: '',
   cropMode: false,
   selectedImage: null,
@@ -82,7 +85,9 @@ function renderLibrary() {
     for (const paper of state.papers.filter((item) => item.folderId === folder.id)) {
       const button = document.createElement('button');
       button.className = `paper-item${state.selectedPaper?.id === paper.id ? ' selected' : ''}`;
-      button.innerHTML = `<strong>${escapeHtml(paper.title)}</strong><small>${paper.year || '本地导入'}</small>`;
+      const firstAuthor = paper.authors?.length > 1 ? `${paper.authors[0]} 等` : paper.authors?.[0];
+      button.innerHTML = `<strong>${escapeHtml(paper.title)}</strong><small>${escapeHtml([firstAuthor, paper.year].filter(Boolean).join(' · ') || '本地导入')}</small>`;
+      button.title = paper.title;
       button.addEventListener('click', () => selectPaper(paper));
       button.addEventListener('contextmenu', (event) => {
         state.contextPaperId = paper.id;
@@ -125,10 +130,11 @@ async function loadLibrary() {
 function clearReader() {
   state.selectedPaper = null;
   state.pdf = null;
-  state.pageText = '';
   state.selectedText = '';
+  state.pageObserver?.disconnect();
+  $('pdfPages').replaceChildren();
   $('emptyReader').hidden = false;
-  $('pdfPageWrap').hidden = true;
+  $('pdfPages').hidden = true;
   $('translationPanel').hidden = true;
   $('paperTitle').textContent = 'Paper Reader';
   $('paperMeta').textContent = '选择一篇论文开始阅读';
@@ -138,8 +144,10 @@ function clearReader() {
 
 async function selectPaper(paper) {
   state.selectedPaper = paper;
+  state.pdf = null;
   state.page = paper.currentPage || 1;
   state.zoom = 1;
+  state.selectedText = '';
   state.selectedImage = null;
   state.selectedImageLabel = '';
   renderLibrary();
@@ -147,70 +155,121 @@ async function selectPaper(paper) {
   $('paperTitle').textContent = paper.title;
   $('paperMeta').textContent = [paper.authors?.slice(0, 3).join(', '), paper.year, paper.arxivId].filter(Boolean).join(' · ') || '本地论文';
   $('emptyReader').hidden = true;
-  $('pdfPageWrap').hidden = false;
+  $('pdfPages').hidden = false;
   $('translationPanel').hidden = true;
   try {
     state.pdf = await pdfjsLib.getDocument(paper.pdfUrl).promise;
     $('pageCount').textContent = state.pdf.numPages;
-    await renderPage();
+    await renderDocument();
+    scrollToPage(state.page);
   } catch (error) {
     showToast(`PDF 加载失败：${error.message}`);
   }
 }
 
-async function renderPage() {
-  if (!state.pdf) return;
-  state.page = Math.min(Math.max(1, state.page), state.pdf.numPages);
-  $('pageInput').value = state.page;
-  state.selectedText = '';
-  state.renderTask?.cancel();
-  const page = await state.pdf.getPage(state.page);
-  const viewport = page.getViewport({ scale: state.zoom * 1.35 });
+async function renderDocument() {
+  const renderId = ++state.renderId;
+  const pdf = state.pdf;
+  const scale = state.zoom * 1.35;
+  const container = $('pdfPages');
+  state.pageObserver?.disconnect();
+  const pages = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const viewport = (await pdf.getPage(pageNumber)).getViewport({ scale });
+    if (renderId !== state.renderId) return;
+    const element = document.createElement('div');
+    element.className = 'pdf-page';
+    element.dataset.page = pageNumber;
+    element.style.width = `${Math.floor(viewport.width)}px`;
+    element.style.height = `${Math.floor(viewport.height)}px`;
+    pages.push(element);
+  }
+  container.replaceChildren(...pages);
+  state.pageObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting || entry.target.dataset.rendered) continue;
+      renderPdfPage(pdf, entry.target, scale).catch((error) => showToast(`PDF 页面渲染失败：${error.message}`));
+    }
+  }, { root: $('readerStage'), rootMargin: '800px 0px' });
+  for (const element of pages) state.pageObserver.observe(element);
+  $('zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
+}
+
+async function renderPdfPage(pdf, element, scale) {
+  element.dataset.rendered = 'true';
+  const page = await pdf.getPage(Number(element.dataset.page));
+  const viewport = page.getViewport({ scale });
   const outputScale = window.devicePixelRatio;
-  const canvas = $('pdfCanvas');
+  const canvas = document.createElement('canvas');
   canvas.width = Math.floor(viewport.width * outputScale);
   canvas.height = Math.floor(viewport.height * outputScale);
   canvas.style.width = `${Math.floor(viewport.width)}px`;
   canvas.style.height = `${Math.floor(viewport.height)}px`;
-  const renderTask = page.render({
+  const textLayer = document.createElement('div');
+  textLayer.className = 'textLayer';
+  textLayer.style.setProperty('--total-scale-factor', viewport.scale);
+  element.append(canvas, textLayer);
+  await page.render({
     canvasContext: canvas.getContext('2d', { alpha: false }),
     viewport,
     transform: [outputScale, 0, 0, outputScale, 0, 0],
-  });
-  state.renderTask = renderTask;
-  try {
-    await renderTask.promise;
-  } catch (error) {
-    if (error instanceof pdfjsLib.RenderingCancelledException) return;
-    throw error;
-  }
-  const textContent = await page.getTextContent();
-  const textLayer = $('textLayer');
-  textLayer.replaceChildren();
-  textLayer.style.setProperty('--total-scale-factor', viewport.scale);
-  await new pdfjsLib.TextLayer({ textContentSource: textContent, container: textLayer, viewport }).render();
-  state.pageText = textContent.items.map((item) => item.str).join(' ');
-  $('zoomLabel').textContent = `${Math.round(state.zoom * 100)}%`;
-  updateContextChips();
-  try {
-    await request(`/api/papers/${state.selectedPaper.id}/position`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: state.page }),
-    });
-  } catch (error) {
-    showToast(`阅读位置保存失败：${error.message}`);
-  }
+  }).promise;
+  await new pdfjsLib.TextLayer({ textContentSource: await page.getTextContent(), container: textLayer, viewport }).render();
+}
+
+function scrollToPage(pageNumber) {
+  const target = Math.min(Math.max(1, pageNumber), state.pdf.numPages);
+  $('pdfPages').children[target - 1].scrollIntoView({ block: 'start' });
+  setCurrentPage(target);
+}
+
+function updateCurrentPageFromScroll() {
+  const stage = $('readerStage');
+  const line = stage.getBoundingClientRect().top + stage.clientHeight / 3;
+  const current = [...$('pdfPages').children].find((element) => element.getBoundingClientRect().bottom >= line);
+  if (current) setCurrentPage(Number(current.dataset.page));
+}
+
+function setCurrentPage(pageNumber) {
+  $('pageInput').value = pageNumber;
+  if (pageNumber === state.page) return;
+  state.page = pageNumber;
+  const paperId = state.selectedPaper.id;
+  window.clearTimeout(state.savePositionTimer);
+  state.savePositionTimer = window.setTimeout(async () => {
+    try {
+      await request(`/api/papers/${paperId}/position`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: pageNumber }),
+      });
+    } catch (error) {
+      showToast(`阅读位置保存失败：${error.message}`);
+    }
+  }, 600);
+}
+
+async function changeZoom(delta) {
+  if (!state.pdf) return;
+  state.zoom = Math.min(2, Math.max(.6, Math.round((state.zoom + delta) * 10) / 10));
+  const page = state.page;
+  await renderDocument();
+  scrollToPage(page);
+}
+
+async function currentPageText() {
+  const page = await state.pdf.getPage(state.page);
+  return (await page.getTextContent()).items.map((item) => item.str).join(' ');
 }
 
 function trackPdfSelection() {
   const selection = window.getSelection();
-  if (!selection.rangeCount || !$('textLayer').contains(selection.anchorNode)) return;
+  if (!selection.rangeCount || !$('pdfPages').contains(selection.anchorNode)) return;
   state.selectedText = selection.toString().trim();
   updateContextChips();
 }
 
 function setCropMode(enabled) {
   state.cropMode = enabled;
-  $('canvasWrap').classList.toggle('crop-mode', enabled);
+  $('pdfPages').classList.toggle('crop-mode', enabled);
   $('cropToggle').classList.toggle('active', enabled);
 }
 
@@ -234,10 +293,15 @@ async function translateSelection() {
   }
 }
 
+function renderMarkdown(text) {
+  return DOMPurify.sanitize(marked.parse(text));
+}
+
 function addMessage(role, text = '') {
   const message = document.createElement('div');
   message.className = `message ${role}`;
-  const content = document.createElement('pre');
+  const content = document.createElement(role === 'assistant' ? 'div' : 'pre');
+  if (role === 'assistant') content.className = 'markdown';
   content.textContent = text;
   message.append(content);
   $('chatMessages').append(message);
@@ -248,10 +312,9 @@ function addMessage(role, text = '') {
 function updateContextChips() {
   const chips = $('contextChips');
   chips.innerHTML = '';
-  if (state.selectedPaper) chips.append(chip(`论文：${state.selectedPaper.title}`));
-  chips.append(chip(`第 ${state.page} 页`));
   if (state.selectedText) chips.append(chip('已选中文本'));
   if (state.selectedImage) chips.append(chip(state.selectedImageLabel || '已附加图片'));
+  chips.hidden = !chips.children.length;
 }
 
 function chip(text) {
@@ -263,6 +326,7 @@ function chip(text) {
 
 async function sendQuestion(question, task = 'question') {
   if (!state.selectedPaper) return showToast('请先选择一篇论文');
+  if (!state.pdf) return showToast('PDF 尚未加载完成');
   if (!question.trim()) return;
   if (state.agentBusy) return showToast('Agent 正在回答');
   state.agentBusy = true;
@@ -270,15 +334,16 @@ async function sendQuestion(question, task = 'question') {
   $('agentStatus').classList.add('busy');
   addMessage('user', question);
   const assistant = addMessage('assistant', '');
-  const payload = {
-    question,
-    task,
-    page: state.page,
-    pageText: state.pageText,
-    selectedText: state.selectedText,
-    imageData: state.selectedImage,
-  };
+  let answer = '';
   try {
+    const payload = {
+      question,
+      task,
+      page: state.page,
+      pageText: await currentPageText(),
+      selectedText: state.selectedText,
+      imageData: state.selectedImage,
+    };
     const response = await fetch(`/api/papers/${state.selectedPaper.id}/ask`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
     });
@@ -298,7 +363,8 @@ async function sendQuestion(question, task = 'question') {
         if (!data) continue;
         const parsed = JSON.parse(data);
         if (eventName === 'token') {
-          assistant.textContent += parsed.text;
+          answer += parsed.text;
+          assistant.innerHTML = renderMarkdown(answer);
           $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
         }
         if (eventName === 'error') throw new Error(parsed.message);
@@ -319,36 +385,36 @@ async function sendQuestion(question, task = 'question') {
 }
 
 function setupCropSelection() {
-  const canvas = $('pdfCanvas');
-  const wrap = $('canvasWrap');
+  const pages = $('pdfPages');
+  const cropBox = document.createElement('div');
+  cropBox.className = 'crop-box';
   let start = null;
-  wrap.addEventListener('pointerdown', (event) => {
-    if (!state.pdf || !state.cropMode) return;
+  const cropRect = (event) => {
+    const x = Math.min(Math.max(event.clientX - start.rect.left, 0), start.rect.width);
+    const y = Math.min(Math.max(event.clientY - start.rect.top, 0), start.rect.height);
+    return { left: Math.min(start.x, x), top: Math.min(start.y, y), width: Math.abs(x - start.x), height: Math.abs(y - start.y) };
+  };
+  pages.addEventListener('pointerdown', (event) => {
+    const pageElement = event.target.closest('.pdf-page');
+    const canvas = pageElement?.querySelector('canvas');
+    if (!state.cropMode || !canvas) return;
     const rect = canvas.getBoundingClientRect();
-    start = { x: event.clientX - rect.left, y: event.clientY - rect.top, rect };
-    $('cropBox').hidden = false;
-    $('cropBox').style.left = `${start.x}px`;
-    $('cropBox').style.top = `${start.y}px`;
-    $('cropBox').style.width = '0px';
-    $('cropBox').style.height = '0px';
-    wrap.setPointerCapture(event.pointerId);
+    start = { x: event.clientX - rect.left, y: event.clientY - rect.top, rect, canvas };
+    Object.assign(cropBox.style, { left: `${start.x}px`, top: `${start.y}px`, width: '0px', height: '0px' });
+    pageElement.append(cropBox);
+    pages.setPointerCapture(event.pointerId);
   });
-  wrap.addEventListener('pointermove', (event) => {
+  pages.addEventListener('pointermove', (event) => {
     if (!start) return;
-    const x = event.clientX - start.rect.left;
-    const y = event.clientY - start.rect.top;
-    const left = Math.min(start.x, x); const top = Math.min(start.y, y);
-    const width = Math.abs(x - start.x); const height = Math.abs(y - start.y);
-    Object.assign($('cropBox').style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+    const { left, top, width, height } = cropRect(event);
+    Object.assign(cropBox.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
   });
-  wrap.addEventListener('pointerup', (event) => {
+  pages.addEventListener('pointerup', (event) => {
     if (!start) return;
-    const rect = start.rect;
-    const x = event.clientX - rect.left; const y = event.clientY - rect.top;
-    const left = Math.min(start.x, x); const top = Math.min(start.y, y);
-    const width = Math.abs(x - start.x); const height = Math.abs(y - start.y);
+    const { rect, canvas } = start;
+    const { left, top, width, height } = cropRect(event);
     start = null;
-    $('cropBox').hidden = true;
+    cropBox.remove();
     if (width < 10 || height < 10) return;
     setCropMode(false);
     const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
@@ -362,18 +428,33 @@ function setupCropSelection() {
   });
 }
 
+async function readFirstPageText(file) {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  try {
+    const content = await (await pdf.getPage(1)).getTextContent();
+    return content.items.map((item) => item.str + (item.hasEOL ? '\n' : ' ')).join('');
+  } finally {
+    await pdf.destroy();
+  }
+}
+
 async function importLocalFile(event) {
   const file = event.target.files[0];
   if (!file) return;
+  $('libraryStatus').textContent = '正在导入并识别论文信息…';
   try {
-    const data = await readAsDataUrl(file);
+    const [data, firstPageText] = await Promise.all([readAsDataUrl(file), readFirstPageText(file)]);
     const result = await request('/api/papers/upload', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ fileName: file.name, data, folderId: state.importFolderId || 'inbox' }),
+      body: JSON.stringify({ fileName: file.name, data, firstPageText, folderId: state.importFolderId || 'inbox' }),
     });
+    if (result.metadataError) showToast(`论文已导入，但未能识别标题和作者：${result.metadataError}`);
     await loadLibrary();
     await selectPaper(result);
-  } catch (error) { showToast(error.message); }
+  } catch (error) {
+    showToast(error.message);
+    renderLibrary();
+  }
   event.target.value = '';
 }
 
@@ -491,12 +572,25 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('selectionchange', trackPdfSelection);
 $('cropToggle').addEventListener('click', () => setCropMode(!state.cropMode));
-$('previousPage').addEventListener('click', async () => { state.page -= 1; await renderPage(); });
-$('nextPage').addEventListener('click', async () => { state.page += 1; await renderPage(); });
-$('pageInput').addEventListener('change', async (event) => { state.page = Number(event.target.value); await renderPage(); });
-$('zoomOut').addEventListener('click', async () => { state.zoom = Math.max(.6, state.zoom - .1); await renderPage(); });
-$('zoomIn').addEventListener('click', async () => { state.zoom = Math.min(2, state.zoom + .1); await renderPage(); });
+$('previousPage').addEventListener('click', () => { if (state.pdf) scrollToPage(state.page - 1); });
+$('nextPage').addEventListener('click', () => { if (state.pdf) scrollToPage(state.page + 1); });
+$('pageInput').addEventListener('change', (event) => { if (state.pdf) scrollToPage(Number(event.target.value)); });
+$('readerStage').addEventListener('scroll', () => { if (state.pdf) updateCurrentPageFromScroll(); });
+$('zoomOut').addEventListener('click', () => changeZoom(-.1));
+$('zoomIn').addEventListener('click', () => changeZoom(.1));
 $('translateSelection').addEventListener('click', translateSelection);
+$('chatInput').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+  if (event.ctrlKey) {
+    event.preventDefault();
+    const input = event.target;
+    input.setRangeText('\n', input.selectionStart, input.selectionEnd, 'end');
+    return;
+  }
+  if (event.shiftKey || event.altKey || event.metaKey) return;
+  event.preventDefault();
+  $('chatForm').requestSubmit();
+});
 $('chatForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('chatInput'); const question = input.value; input.value = ''; await sendQuestion(question); });
 for (const button of document.querySelectorAll('.quick-actions button')) {
   button.addEventListener('click', () => sendQuestion(button.dataset.prompt, button.dataset.task));
@@ -510,6 +604,7 @@ $('imageInput').addEventListener('change', async (event) => {
   updateContextChips();
 });
 setupCropSelection();
+updateContextChips();
 loadLibrary().catch((error) => showToast(error.message));
 
 function readAsDataUrl(file) {

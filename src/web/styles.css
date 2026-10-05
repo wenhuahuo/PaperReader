@@ -73,11 +73,11 @@ button, .attach-button { border: 0; border-radius: 8px; padding: 9px 10px; font-
 #pageInput { width: 40px; padding: 5px; text-align: center; }
 .reader-stage { min-height: 0; flex: 1; overflow: auto; padding: 25px; }
 .empty-state { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 13px; }
-.pdf-page-wrap { width: fit-content; margin: 0 auto; }
-.canvas-wrap { position: relative; border: 1px solid #dfe3eb; background: white; box-shadow: 0 8px 30px rgba(40, 50, 70, .08); }
-.canvas-wrap.crop-mode { cursor: crosshair; user-select: none; }
-.canvas-wrap.crop-mode .textLayer { pointer-events: none; }
-#pdfCanvas { display: block; }
+.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 18px; width: fit-content; min-width: 100%; }
+.pdf-page { position: relative; flex: none; border: 1px solid #dfe3eb; background: white; box-shadow: 0 8px 30px rgba(40, 50, 70, .08); }
+.pdf-pages.crop-mode .pdf-page { cursor: crosshair; user-select: none; }
+.pdf-pages.crop-mode .textLayer { pointer-events: none; }
+.pdf-page canvas { display: block; }
 .crop-box { position: absolute; z-index: 2; border: 2px solid var(--blue); background: rgba(83, 109, 254, .15); pointer-events: none; }
 .textLayer { position: absolute; inset: 0; overflow: clip; opacity: 1; line-height: 1; text-align: initial; transform-origin: 0 0; text-size-adjust: none; forced-color-adjust: none; z-index: 1; --scale-round-x: 1px; --scale-round-y: 1px; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
 .textLayer :is(span, br) { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0% 0%; }
@@ -94,7 +94,7 @@ button, .attach-button { border: 0; border-radius: 8px; padding: 9px 10px; font-
 .chat-header h2 { font-size: 17px; }
 .agent-status { padding: 4px 8px; border-radius: 999px; color: #19885c; background: #eaf8f0; font-size: 10px; }
 .agent-status.busy { color: #986b15; background: #fff4d8; }
-.context-chips { display: flex; flex-wrap: wrap; gap: 5px; min-height: 0; padding: 10px 15px 0; }
+.context-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 15px 0; }
 .context-chip { padding: 5px 8px; border-radius: 6px; color: #5a66a6; background: var(--blue-soft); font-size: 10px; }
 .chat-messages { min-height: 0; flex: 1; overflow: auto; padding: 15px; }
 .welcome-card, .message { margin-bottom: 10px; padding: 12px; border-radius: 11px; font-size: 12px; line-height: 1.6; }
@@ -103,7 +103,21 @@ button, .attach-button { border: 0; border-radius: 8px; padding: 9px 10px; font-
 .welcome-card p { margin: 4px 0 0; }
 .message.user { margin-left: 25px; color: white; background: #576ff4; }
 .message.assistant { margin-right: 10px; color: #465163; background: white; border: 1px solid var(--line); }
-.message pre { overflow: auto; white-space: pre-wrap; font: inherit; }
+.message pre { margin: 0; overflow: auto; white-space: pre-wrap; font: inherit; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown table { margin: 0 0 8px; }
+.markdown ul, .markdown ol { padding-left: 20px; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 { margin: 12px 0 6px; color: #263244; font-size: 13px; }
+.markdown h1 { font-size: 15px; }
+.markdown h2 { font-size: 14px; }
+.markdown code { padding: 1px 4px; border-radius: 4px; background: #f1f3f7; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.markdown pre { margin: 0 0 8px; padding: 9px; border-radius: 7px; background: #f4f5f8; white-space: pre; }
+.markdown pre code { padding: 0; background: none; }
+.markdown blockquote { padding-left: 10px; border-left: 3px solid #d7dcea; color: #6b7585; }
+.markdown table { display: block; overflow-x: auto; border-collapse: collapse; }
+.markdown th, .markdown td { padding: 4px 7px; border: 1px solid var(--line); }
+.markdown a { color: var(--blue); }
 .quick-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 15px; border-top: 1px solid var(--line); }
 .quick-actions button { padding: 6px 8px; color: #59657a; background: #f3f5f8; font-size: 10px; }
 .chat-composer { padding: 12px 15px 15px; border-top: 1px solid var(--line); }

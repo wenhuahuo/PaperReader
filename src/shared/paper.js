@@ -4,10 +4,18 @@ export function extractArxivId(value) {
   return match?.[1] ?? null;
 }
 
+const arxivIdPattern = '([a-z-]+(?:\\.[a-z]{2})?\\/\\d{7}|\\d{4}\\.\\d{4,5})(v\\d+)?';
+
+export function findLocalArxivId(fileName, firstPageText) {
+  const fromFileName = String(fileName ?? '').match(new RegExp(`^${arxivIdPattern}\\.pdf$`, 'i'));
+  const fromText = String(firstPageText ?? '').match(new RegExp(`arXiv:\\s*${arxivIdPattern}`, 'i'));
+  const match = fromFileName || fromText;
+  return match ? { arxivId: match[1], version: match[2] ?? null } : null;
+}
+
 export function cleanPaperTitle(value) {
   return String(value ?? '')
     .replace(/\s+/g, ' ')
-    .replace(/[\\/:*?"<>|]/g, '-')
     .trim()
     .slice(0, 180);
 }

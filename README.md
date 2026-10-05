@@ -50,11 +50,11 @@ node scripts/check-reader-ui.mjs path/to/paper.pdf
 
 ## 当前能力
 
-- 本地 PDF 和 arXiv 链接导入
+- 本地 PDF 和 arXiv 链接导入；本地 PDF 从文件名或首页文本识别 arXiv 编号并拉取元数据，识别不到时由 pi 从首页文本提取标题、作者和年份
 - 文件夹和论文目录
-- PDF.js 高清渲染、翻页、缩放，PDF 页面上直接选择文字
+- PDF.js 高清渲染、连续上下滚动阅读、缩放，PDF 页面上直接选择文字
 - 「框选图片」模式截取页面区域并附加到 Agent 上下文
 - 独立翻译任务与本地翻译缓存
-- pi 流式论文问答
+- pi 流式论文问答，回复按 Markdown 渲染；Enter 发送、Ctrl+Enter 换行
 - 可折叠文件夹树、文件夹右键重命名/递归删除/导入、论文右键删除
 - 设置页维护翻译模型、Pi 模型、思考强度和 prompt templates

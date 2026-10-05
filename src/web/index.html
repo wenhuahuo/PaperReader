@@ -30,9 +30,9 @@
             <h1 id="paperTitle">Paper Reader</h1>
           </div>
           <div class="reader-controls">
-            <button id="previousPage">‹</button>
+            <button id="previousPage" title="上一页">↑</button>
             <span><input id="pageInput" type="number" min="1" value="1" /> / <span id="pageCount">—</span></span>
-            <button id="nextPage">›</button>
+            <button id="nextPage" title="下一页">↓</button>
             <button id="zoomOut">−</button>
             <span id="zoomLabel">100%</span>
             <button id="zoomIn">+</button>
@@ -42,13 +42,7 @@
         </header>
         <section class="reader-stage" id="readerStage">
           <div class="empty-state" id="emptyReader">从左侧导入或选择一篇论文</div>
-          <div class="pdf-page-wrap" id="pdfPageWrap" hidden>
-            <div class="canvas-wrap" id="canvasWrap">
-              <canvas id="pdfCanvas"></canvas>
-              <div id="textLayer" class="textLayer"></div>
-              <div id="cropBox" class="crop-box" hidden></div>
-            </div>
-          </div>
+          <div class="pdf-pages" id="pdfPages" hidden></div>
         </section>
         <section id="translationPanel" class="translation-panel" hidden>
           <div class="panel-heading"><span>独立翻译</span><span id="translationStatus" class="muted"></span></div>
@@ -71,7 +65,7 @@
           <button data-task="figure" data-prompt="请解释当前图片或表格，并说明它支持的结论。">解释图片/表格</button>
         </div>
         <form id="chatForm" class="chat-composer">
-          <textarea id="chatInput" rows="3" placeholder="询问论文内容…"></textarea>
+          <textarea id="chatInput" rows="3" placeholder="询问论文内容…（Enter 发送，Ctrl+Enter 换行）"></textarea>
           <div class="composer-row">
             <label class="attach-button">添加图片<input id="imageInput" type="file" accept="image/*" hidden /></label>
             <span id="imageStatus" class="muted"></span>
