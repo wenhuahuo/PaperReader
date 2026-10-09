@@ -29,6 +29,7 @@ export async function runPaperAgent({ question, context, imageData, task = 'ques
     context.page ? `当前页码：${context.page}` : '',
     context.selectedText ? `选中文本：\n${context.selectedText}` : '',
     context.currentPageText ? `当前页文本：\n${context.currentPageText}` : '',
+    context.previousAnswer ? `上一条 AI 回答：\n${context.previousAnswer}` : '',
     '',
     '# 用户问题',
     question,

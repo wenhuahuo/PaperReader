@@ -25,6 +25,7 @@ const state = {
   cropMode: false,
   selectedImage: null,
   selectedImageLabel: '',
+  followUpContext: '',
   agentBusy: false,
 };
 
@@ -132,6 +133,7 @@ function clearReader() {
   state.selectedPaper = null;
   state.pdf = null;
   state.selectedText = '';
+  state.followUpContext = '';
   state.pageObserver?.disconnect();
   $('pdfPages').replaceChildren();
   $('emptyReader').hidden = false;
@@ -151,6 +153,7 @@ async function selectPaper(paper) {
   state.selectedText = '';
   state.selectedImage = null;
   state.selectedImageLabel = '';
+  state.followUpContext = '';
   renderLibrary();
   updateContextChips();
   $('paperTitle').textContent = paper.title;
@@ -308,9 +311,33 @@ function addMessage(role, text = '') {
   if (role === 'assistant') content.className = 'markdown';
   content.textContent = text;
   message.append(content);
+
+  let followUpButton = null;
+  if (role === 'assistant') {
+    const messagePaperId = state.selectedPaper?.id;
+    const actions = document.createElement('div');
+    actions.className = 'message-actions';
+    followUpButton = document.createElement('button');
+    followUpButton.type = 'button';
+    followUpButton.className = 'message-action';
+    followUpButton.textContent = '追问';
+    followUpButton.hidden = true;
+    followUpButton.addEventListener('click', () => {
+      if (state.selectedPaper?.id !== messagePaperId) return showToast('请切回生成该回答的论文后再追问');
+      const answer = content.dataset.answer?.trim();
+      if (!answer) return;
+      state.followUpContext = answer;
+      updateContextChips();
+      $('chatInput').focus();
+      showToast('已将这条回答加入下一次提问');
+    });
+    actions.append(followUpButton);
+    message.append(actions);
+  }
+
   $('chatMessages').append(message);
   $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
-  return content;
+  return { content, followUpButton };
 }
 
 function updateContextChips() {
@@ -318,6 +345,7 @@ function updateContextChips() {
   chips.innerHTML = '';
   if (state.selectedText) chips.append(chip('已选中文本'));
   if (state.selectedImage) chips.append(chip(state.selectedImageLabel || '已附加图片'));
+  if (state.followUpContext) chips.append(chip('已附加上一条回答'));
   chips.hidden = !chips.children.length;
 }
 
@@ -337,8 +365,10 @@ async function sendQuestion(question, task = 'question') {
   $('agentStatus').textContent = '思考中';
   $('agentStatus').classList.add('busy');
   addMessage('user', question);
-  const assistant = addMessage('assistant', '');
+  const assistantMessage = addMessage('assistant', '');
+  const assistant = assistantMessage.content;
   let answer = '';
+  let completed = false;
   try {
     const payload = {
       question,
@@ -346,6 +376,7 @@ async function sendQuestion(question, task = 'question') {
       page: state.page,
       pageText: await currentPageText(),
       selectedText: state.selectedText,
+      previousAnswer: state.followUpContext,
       imageData: state.selectedImage,
     };
     const response = await fetch(`/api/papers/${state.selectedPaper.id}/ask`, {
@@ -368,11 +399,18 @@ async function sendQuestion(question, task = 'question') {
         const parsed = JSON.parse(data);
         if (eventName === 'token') {
           answer += parsed.text;
+          assistant.dataset.answer = answer;
           assistant.innerHTML = renderMarkdown(answer);
           $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
         }
+        if (eventName === 'done') completed = true;
         if (eventName === 'error') throw new Error(parsed.message);
       }
+    }
+    if (completed && answer.trim()) {
+      assistantMessage.followUpButton.hidden = false;
+      state.followUpContext = '';
+      updateContextChips();
     }
   } catch (error) {
     assistant.textContent = `Agent 错误：${error.message}`;

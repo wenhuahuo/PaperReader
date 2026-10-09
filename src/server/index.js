@@ -275,6 +275,7 @@ async function handleApi(req, res, url) {
       page: body.page,
       selectedText: normalizeText(body.selectedText),
       currentPageText: normalizeText(body.pageText),
+      previousAnswer: normalizeText(body.previousAnswer),
     };
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
