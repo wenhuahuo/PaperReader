@@ -46,13 +46,7 @@ POST http://127.0.0.1:8000/v1/embeddings
 
 ## Paper Reader configuration
 
-Set these environment variables before starting the Node server. The repository provides a sourceable template:
-
-```bash
-source scripts/fulltext-rag-env.sh
-```
-
-The template defaults to:
+Set these environment variables before starting the Node server:
 
 ```bash
 export GLM_OCR_BASE_URL=http://127.0.0.1:5002
