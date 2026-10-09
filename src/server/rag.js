@@ -17,12 +17,18 @@ function authorizationHeader(apiKey) {
 }
 
 async function postJson(url, body, headers, label, signal) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-    signal,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    const cause = error.cause?.code || error.message;
+    throw new Error(`${label}服务连接失败：${url}（${cause}）`);
+  }
   const raw = await response.text();
   let payload;
   try {
