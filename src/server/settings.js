@@ -7,6 +7,14 @@ const promptDirectory = path.join(runtimeDirectory, 'prompt-templates');
 
 const defaultSettings = {
   translation: { baseUrl: '', apiKey: '', model: '' },
+  rag: {
+    ocrBaseUrl: '',
+    ocrApiKey: '',
+    embeddingBaseUrl: '',
+    embeddingApiKey: '',
+    embeddingModel: 'WeMM-Embedding-2B',
+    topK: 5,
+  },
   agent: { model: '', thinking: 'medium' },
   prompts: {
     summary: '请概括这篇论文的研究问题、方法、主要结果和局限。',
@@ -22,6 +30,14 @@ function mergeSettings(saved = {}) {
       baseUrl: saved.translation?.baseUrl ?? process.env.TRANSLATION_BASE_URL ?? defaultSettings.translation.baseUrl,
       apiKey: saved.translation?.apiKey ?? process.env.TRANSLATION_API_KEY ?? defaultSettings.translation.apiKey,
       model: saved.translation?.model ?? process.env.TRANSLATION_MODEL ?? defaultSettings.translation.model,
+    },
+    rag: {
+      ocrBaseUrl: saved.rag?.ocrBaseUrl ?? process.env.GLM_OCR_BASE_URL ?? defaultSettings.rag.ocrBaseUrl,
+      ocrApiKey: saved.rag?.ocrApiKey ?? process.env.GLM_OCR_API_KEY ?? defaultSettings.rag.ocrApiKey,
+      embeddingBaseUrl: saved.rag?.embeddingBaseUrl ?? process.env.WEMM_EMBEDDING_BASE_URL ?? defaultSettings.rag.embeddingBaseUrl,
+      embeddingApiKey: saved.rag?.embeddingApiKey ?? process.env.WEMM_EMBEDDING_API_KEY ?? defaultSettings.rag.embeddingApiKey,
+      embeddingModel: saved.rag?.embeddingModel ?? process.env.WEMM_EMBEDDING_MODEL ?? defaultSettings.rag.embeddingModel,
+      topK: Number(saved.rag?.topK ?? process.env.RAG_TOP_K ?? defaultSettings.rag.topK),
     },
     agent: {
       model: saved.agent?.model ?? process.env.PI_MODEL ?? defaultSettings.agent.model,
@@ -46,6 +62,7 @@ export async function saveAppSettings(patch) {
   const next = mergeSettings({
     ...current,
     translation: { ...current.translation, ...(patch.translation ?? {}) },
+    rag: { ...current.rag, ...(patch.rag ?? {}) },
     agent: { ...current.agent, ...(patch.agent ?? {}) },
     prompts: { ...current.prompts, ...(patch.prompts ?? {}) },
   });
@@ -54,11 +71,20 @@ export async function saveAppSettings(patch) {
 }
 
 export function publicSettings(settings) {
+  const rag = settings.rag ?? defaultSettings.rag;
   return {
     translation: {
       baseUrl: settings.translation.baseUrl,
       model: settings.translation.model,
       apiKeyConfigured: Boolean(settings.translation.apiKey),
+    },
+    rag: {
+      ocrBaseUrl: rag.ocrBaseUrl,
+      embeddingBaseUrl: rag.embeddingBaseUrl,
+      embeddingModel: rag.embeddingModel,
+      topK: rag.topK,
+      ocrApiKeyConfigured: Boolean(rag.ocrApiKey),
+      embeddingApiKeyConfigured: Boolean(rag.embeddingApiKey),
     },
     agent: settings.agent,
     prompts: settings.prompts,

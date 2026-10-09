@@ -10,4 +10,6 @@ dist/
 .vscode/
 .idea/
 AGENT.md
-docs/
+docs/*
+!docs/
+!docs/fulltext-rag.md

@@ -17,6 +17,7 @@ import { getArxivPaper } from './arxiv.js';
 import { translateText } from './model.js';
 import { getAppSettings, publicSettings, saveAppSettings, writePromptTemplates } from './settings.js';
 import { extractPaperMetadata, runPaperAgent } from './pi.js';
+import { buildPaperRagIndex, savePaperRagIndex } from './rag.js';
 
 const projectRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const staticRoot = path.join(projectRoot, 'dist');
@@ -86,11 +87,17 @@ function notFound(message) {
 async function importPdf({ pdfBuffer, metadata }) {
   const paper = createPaperRecord(metadata);
   await mkdir(paperDirectory(paper.id), { recursive: true });
-  await writeFile(paperPdfPath(paper.id), pdfBuffer);
-  const index = await readIndex();
-  index.papers.unshift(paper);
-  await saveIndex(index);
-  return paper;
+  try {
+    await writeFile(paperPdfPath(paper.id), pdfBuffer);
+    await savePaperRagIndex(paper.id, await buildPaperRagIndex(pdfBuffer));
+    const index = await readIndex();
+    index.papers.unshift(paper);
+    await saveIndex(index);
+    return paper;
+  } catch (error) {
+    await rm(paperDirectory(paper.id), { recursive: true, force: true });
+    throw error;
+  }
 }
 
 async function importLocalPdf(body) {

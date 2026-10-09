@@ -2,9 +2,12 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { getAppSettings, writePromptTemplates } from './settings.js';
 
+const projectRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const promptDirectory = path.resolve('.runtime/agent-prompts');
+const ragToolPath = path.join(projectRoot, 'src/server/rag-tool.js');
 
 function parseEvent(line) {
   try {
@@ -41,7 +44,10 @@ export async function runPaperAgent({ question, context, imageData, task = 'ques
   const args = [
     '--prompt-template', templateDirectory,
     '--system-prompt',
-    '你是论文阅读 Agent，专注于基于用户提供上下文的论文概括、章节精读、图片解释和问答。',
+    [
+      '你是论文阅读 Agent，专注于基于用户提供上下文的论文概括、章节精读、图片解释和问答。',
+      '当用户要求结合全文、跨章节比较、概括全文，或当前页信息不足时，调用 paper_search 检索当前论文的小节内容。回答时引用检索结果中的页码和章节名称。',
+    ].join('\n'),
     '--thinking', settings.agent.thinking,
     '--',
     `@${promptPath}`,
@@ -54,7 +60,7 @@ export async function runPaperAgent({ question, context, imageData, task = 'ques
   }
 
   try {
-    await runPi(settings, args, onDelta);
+    await runPi(settings, args, onDelta, { paperId: context.paper?.id });
   } finally {
     await cleanup(promptPath, imagePath);
   }
@@ -95,11 +101,11 @@ export async function extractPaperMetadata(firstPageText) {
   return parseMetadataResponse(text);
 }
 
-function runPi(settings, taskArgs, onDelta) {
+function runPi(settings, taskArgs, onDelta, { paperId } = {}) {
   const args = [
     '--mode', 'json',
     '--no-session',
-    '--no-tools',
+    ...(paperId ? ['--tools', 'paper_search', '--extension', ragToolPath] : ['--no-tools']),
     '--no-context-files',
     '--approve',
     '--print',
@@ -109,7 +115,7 @@ function runPi(settings, taskArgs, onDelta) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.PI_COMMAND || 'pi', args, {
       cwd: process.cwd(),
-      env: { ...process.env, PI_OFFLINE: '0' },
+      env: { ...process.env, PI_OFFLINE: '0', ...(paperId ? { PAPER_READER_RAG_PAPER_ID: paperId } : {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.setEncoding('utf8');

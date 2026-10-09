@@ -37,6 +37,10 @@ export function paperPdfPath(paperId) {
   return path.join(paperDirectory(paperId), 'original.pdf');
 }
 
+export function paperRagIndexPath(paperId) {
+  return path.join(paperDirectory(paperId), 'rag-index.json');
+}
+
 export function translationCachePath(paperId) {
   return path.join(rootDirectory, 'cache', 'translations', `${paperId}.json`);
 }
