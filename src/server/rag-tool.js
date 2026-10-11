@@ -21,7 +21,11 @@ const paperSearchTool = defineTool({
         text: JSON.stringify({
           results: results.map((result) => ({
             section: result.title,
-            pages: result.pageStart === result.pageEnd ? `${result.pageStart}` : `${result.pageStart}-${result.pageEnd}`,
+            pages: result.pageStart == null
+              ? '未知'
+              : result.pageStart === result.pageEnd
+                ? `${result.pageStart}`
+                : `${result.pageStart}-${result.pageEnd}`,
             score: Number(result.score.toFixed(4)),
             content: result.text,
           })),

@@ -89,7 +89,7 @@ async function importPdf({ pdfBuffer, metadata }) {
   await mkdir(paperDirectory(paper.id), { recursive: true });
   try {
     await writeFile(paperPdfPath(paper.id), pdfBuffer);
-    await savePaperRagIndex(paper.id, await buildPaperRagIndex(pdfBuffer));
+    await savePaperRagIndex(paper.id, await buildPaperRagIndex(pdfBuffer, paperDirectory(paper.id)));
     const index = await readIndex();
     index.papers.unshift(paper);
     await saveIndex(index);

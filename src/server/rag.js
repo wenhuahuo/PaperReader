@@ -1,12 +1,10 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { createCanvas } from '@napi-rs/canvas';
 import { getAppSettings } from './settings.js';
 import { paperRagIndexPath } from './store.js';
+import { parsePdfWithExpert } from './file-parser.js';
 
-const OCR_BATCH_SIZE = 8;
-const OCR_RENDER_SCALE = 200 / 72;
+const EMBEDDING_BATCH_SIZE = 64;
+const MAX_EMBEDDING_TOKENS = 2800;
 
 function joinUrl(baseUrl, pathname) {
   return `${baseUrl.replace(/\/+$/, '')}/${pathname.replace(/^\/+/, '')}`;
@@ -43,143 +41,150 @@ async function postJson(url, body, headers, label, signal) {
   return payload;
 }
 
-function parseJsonResult(value) {
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value);
-    } catch (error) {
-      throw new Error(`GLM-OCR 返回的 json_result 不是有效 JSON：${error.message}`);
-    }
+function headingLine(line) {
+  const match = /^(#{1,3})\s+(.+?)\s*$/.exec(line);
+  return match ? { level: match[1].length, title: match[2] } : null;
+}
+
+function hasContent(lines) {
+  return lines.some((line) => line.trim());
+}
+
+function renderSection(title, level, lines, parentTitle = null) {
+  const headings = [`## ${parentTitle ?? title}`];
+  if (parentTitle) headings.push(`### ${title}`);
+  const body = lines.join('\n').trim();
+  return {
+    title: parentTitle ? `${parentTitle} / ${title}` : title,
+    parentTitle,
+    level,
+    text: `${headings.join('\n')}\n\n${body}`.trim(),
+  };
+}
+
+function flushChapter(sections, chapter) {
+  if (!chapter) return;
+  if (chapter.level === 3) {
+    if (hasContent(chapter.lines)) sections.push(renderSection(chapter.title, 3, chapter.lines, chapter.parentTitle));
+    return;
   }
-  return value;
+  if (hasContent(chapter.lines)) sections.push(renderSection(chapter.title, 2, chapter.lines));
 }
 
-function normalizeOcrPages(value) {
-  const parsed = parseJsonResult(value);
-  if (!Array.isArray(parsed)) throw new Error('GLM-OCR 未返回页面结果');
-  if (!parsed.length) return [];
-  return Array.isArray(parsed[0]) ? parsed : [parsed];
-}
-
-async function renderPdfPages(pdfBuffer) {
-  const pdf = await pdfjsLib.getDocument({
-    data: new Uint8Array(pdfBuffer),
-    disableWorker: true,
-    standardFontDataUrl: fileURLToPath(new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)),
-  }).promise;
-  const pages = [];
-  try {
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: OCR_RENDER_SCALE });
-      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      pages.push(`data:image/jpeg;base64,${canvas.toBuffer('image/jpeg', { quality: 90 }).toString('base64')}`);
-      page.cleanup();
-    }
-  } finally {
-    await pdf.destroy();
-  }
-  return pages;
-}
-
-async function ocrPages(images, settings, signal) {
-  const payload = await postJson(
-    joinUrl(settings.rag.ocrBaseUrl, '/glmocr/parse'),
-    { images },
-    authorizationHeader(settings.rag.ocrApiKey),
-    'GLM-OCR',
-    signal,
-  );
-  const pages = normalizeOcrPages(payload.json_result ?? payload.layout_details);
-  if (pages.length !== images.length) throw new Error(`GLM-OCR 返回页数不匹配：请求 ${images.length} 页，返回 ${pages.length} 页`);
-  return pages;
-}
-
-function regionLabel(region) {
-  return String(region.native_label ?? region.label ?? '').toLowerCase();
-}
-
-function isHeading(region) {
-  return regionLabel(region) === 'paragraph_title';
-}
-
-function isImage(region) {
-  return ['image', 'chart'].includes(regionLabel(region));
-}
-
-function regionText(region) {
-  return String(region.content ?? '').trim();
-}
-
-function flushSection(sections, current) {
-  if (!current || !current.text.trim()) return;
-  sections.push({
-    id: `section-${sections.length + 1}`,
-    title: current.title,
-    pageStart: current.pageStart,
-    pageEnd: current.pageEnd,
-    text: current.text.trim(),
-  });
-}
-
-export function buildSectionsFromOcr(pages) {
+/**
+ * Convert Expert Markdown into section units.
+ * H1 is ignored. H2 owns direct text, while H3 is the smallest section unit
+ * and carries its H2 title in both metadata and embedded text.
+ */
+export function buildSectionsFromMarkdown(markdown) {
   const sections = [];
-  const images = [];
-  let current = { title: '未分节内容', pageStart: 1, pageEnd: 1, text: '' };
+  let currentH2 = null;
+  let current = null;
+  let inFence = false;
 
-  pages.forEach((regions, pageIndex) => {
-    const pageNumber = pageIndex + 1;
-    for (const region of regions || []) {
-      const label = regionLabel(region);
-      if (isImage(region)) {
-        images.push({
-          page: pageNumber,
-          label,
-          bbox: Array.isArray(region.bbox_2d) ? region.bbox_2d : null,
-          content: regionText(region),
-        });
-        continue;
-      }
-      const text = regionText(region);
-      if (!text) continue;
-      if (isHeading(region)) {
-        flushSection(sections, current);
-        current = { title: text, pageStart: pageNumber, pageEnd: pageNumber, text };
-        continue;
-      }
-      current.pageEnd = pageNumber;
-      current.text += `${current.text ? '\n\n' : ''}${text}`;
+  for (const line of String(markdown ?? '').split(/\r?\n/)) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      if (current) current.lines.push(line);
+      continue;
     }
-  });
-  flushSection(sections, current);
-  return { sections, images };
+    const heading = inFence ? null : headingLine(line);
+    if (!heading) {
+      if (current) current.lines.push(line);
+      continue;
+    }
+    if (heading.level === 1) continue;
+    if (heading.level === 2) {
+      flushChapter(sections, current);
+      currentH2 = heading.title;
+      current = { level: 2, title: currentH2, lines: [] };
+      continue;
+    }
+    if (!currentH2) continue;
+    if (current?.level === 2) {
+      flushChapter(sections, current);
+    } else {
+      flushChapter(sections, current);
+    }
+    current = { level: 3, title: heading.title, parentTitle: currentH2, lines: [] };
+  }
+  flushChapter(sections, current);
+  return sections.map((section, index) => ({
+    id: `section-${index + 1}`,
+    ...section,
+    pageStart: null,
+    pageEnd: null,
+  }));
+}
+
+function estimateTokens(text) {
+  const value = String(text);
+  const nonAscii = (value.match(/[^\x00-\x7F]/g) || []).length;
+  return nonAscii + Math.ceil((value.length - nonAscii) / 4);
+}
+
+function splitSection(section) {
+  const prefix = section.text.split(/\n\n/, 1)[0];
+  const body = section.text.slice(prefix.length).trim();
+  if (!body) return [section];
+  const paragraphs = body.split(/\n\s*\n/).map((value) => value.trim()).filter(Boolean);
+  const parts = [];
+  let current = '';
+  for (const paragraph of paragraphs) {
+    const candidate = current ? `${current}\n\n${paragraph}` : paragraph;
+    if (current && estimateTokens(`${prefix}\n\n${candidate}`) > MAX_EMBEDDING_TOKENS) {
+      parts.push(`${prefix}\n\n${current}`);
+      current = paragraph;
+    } else {
+      current = candidate;
+    }
+    if (estimateTokens(`${prefix}\n\n${current}`) > MAX_EMBEDDING_TOKENS) {
+      throw new Error(`章节内容超过 Embedding-3 单条限制，无法按段落切分：${section.title}`);
+    }
+  }
+  if (current) parts.push(`${prefix}\n\n${current}`);
+  return parts.map((text, index) => ({
+    ...section,
+    id: `${section.id}-${index + 1}`,
+    text,
+    part: index + 1,
+    partCount: parts.length,
+  }));
+}
+
+export function splitSectionsForEmbedding(sections) {
+  return sections.flatMap(splitSection);
 }
 
 async function embedTexts(texts, settings, signal) {
-  if (!settings.rag.embeddingBaseUrl) throw new Error('未配置 WeMM embedding 服务地址');
+  if (!settings.rag.embeddingBaseUrl) throw new Error('未配置智谱 embedding 服务地址');
+  if (!settings.rag.embeddingApiKey) throw new Error('未配置智谱 API key（GLM_API_KEY）');
   if (!texts.length) return [];
-  const payload = await postJson(
-    joinUrl(settings.rag.embeddingBaseUrl, '/embeddings'),
-    { model: settings.rag.embeddingModel, input: texts },
-    authorizationHeader(settings.rag.embeddingApiKey),
-    'WeMM embedding',
-    signal,
-  );
-  const data = Array.isArray(payload.data) ? [...payload.data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)) : [];
-  if (data.length !== texts.length || data.some((item) => !Array.isArray(item.embedding))) {
-    throw new Error('WeMM embedding 返回的向量数量或格式不正确');
+  const vectors = [];
+  for (let start = 0; start < texts.length; start += EMBEDDING_BATCH_SIZE) {
+    const input = texts.slice(start, start + EMBEDDING_BATCH_SIZE);
+    const payload = await postJson(
+      joinUrl(settings.rag.embeddingBaseUrl, '/embeddings'),
+      { model: settings.rag.embeddingModel, input, dimensions: settings.rag.embeddingDimensions },
+      authorizationHeader(settings.rag.embeddingApiKey),
+      '智谱 Embedding-3',
+      signal,
+    );
+    const data = Array.isArray(payload.data) ? [...payload.data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)) : [];
+    if (data.length !== input.length || data.some((item) => !Array.isArray(item.embedding))) {
+      throw new Error('智谱 Embedding-3 返回的向量数量或格式不正确');
+    }
+    vectors.push(...data.map((item) => item.embedding.map(Number)));
   }
-  const vectors = data.map((item) => item.embedding.map(Number));
   if (vectors.some((vector) => !vector.length || vector.some((value) => !Number.isFinite(value)))) {
-    throw new Error('WeMM embedding 返回了无效向量');
+    throw new Error('智谱 Embedding-3 返回了无效向量');
   }
   return vectors;
 }
 
 function normalizeVector(vector) {
   const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-  if (!norm) throw new Error('WeMM embedding 返回了零向量');
+  if (!norm) throw new Error('智谱 Embedding-3 返回了零向量');
   return vector.map((value) => value / norm);
 }
 
@@ -188,25 +193,22 @@ function cosineSimilarity(left, right) {
   return left.reduce((sum, value, index) => sum + value * right[index], 0);
 }
 
-export async function buildPaperRagIndex(pdfBuffer) {
+export async function buildPaperRagIndex(pdfBuffer, paperDirectory) {
   const settings = await getAppSettings();
-  if (!settings.rag.ocrBaseUrl) throw new Error('未配置 GLM-OCR 服务地址');
-  const images = await renderPdfPages(pdfBuffer);
-  const pages = [];
-  for (let start = 0; start < images.length; start += OCR_BATCH_SIZE) {
-    pages.push(...await ocrPages(images.slice(start, start + OCR_BATCH_SIZE), settings));
-  }
-  const { sections, images: imageMetadata } = buildSectionsFromOcr(pages);
-  if (!sections.length) throw new Error('GLM-OCR 未提取到可索引的文本');
-  const embeddings = await embedTexts(sections.map((section) => section.text), settings);
-  const index = {
-    version: 1,
+  const parsed = await parsePdfWithExpert(pdfBuffer, paperDirectory, settings);
+  const sections = buildSectionsFromMarkdown(parsed.markdown);
+  if (!sections.length) throw new Error('智谱 Expert 未提取到二级或三级章节');
+  const chunks = splitSectionsForEmbedding(sections);
+  const embeddings = await embedTexts(chunks.map((section) => section.text), settings);
+  return {
+    version: 2,
+    parser: 'zhipu-expert',
     embeddingModel: settings.rag.embeddingModel,
-    sections: sections.map((section, index) => ({ ...section, embedding: normalizeVector(embeddings[index]) })),
-    images: imageMetadata,
+    embeddingDimensions: settings.rag.embeddingDimensions,
+    sections: chunks.map((section, index) => ({ ...section, embedding: normalizeVector(embeddings[index]) })),
+    images: parsed.images,
     indexedAt: new Date().toISOString(),
   };
-  return index;
 }
 
 export async function savePaperRagIndex(paperId, index) {
@@ -236,6 +238,7 @@ export async function retrievePaperSections(paperId, query, topK, signal) {
   return index.sections
     .map((section) => ({
       title: section.title,
+      parentTitle: section.parentTitle,
       pageStart: section.pageStart,
       pageEnd: section.pageEnd,
       text: section.text,

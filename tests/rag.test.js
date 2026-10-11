@@ -1,29 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSectionsFromOcr, cosineSimilarity, normalizeVector } from '../src/server/rag.js';
+import {
+  buildSectionsFromMarkdown,
+  cosineSimilarity,
+  normalizeVector,
+  splitSectionsForEmbedding,
+} from '../src/server/rag.js';
 
-test('builds one index section per OCR subsection and keeps image metadata', () => {
-  const result = buildSectionsFromOcr([
-    [
-      { native_label: 'doc_title', label: 'text', content: 'Paper title' },
-      { native_label: 'paragraph_title', label: 'text', content: '1 Introduction' },
-      { label: 'text', content: 'Introduction text' },
-      { label: 'image', bbox_2d: [1, 2, 30, 40], content: '' },
-    ],
-    [
-      { native_label: 'paragraph_title', label: 'text', content: '2 Method' },
-      { label: 'formula', content: '$x$' },
-    ],
-  ]);
+test('builds hierarchical Markdown sections and ignores H1', () => {
+  const result = buildSectionsFromMarkdown(`
+# Paper title
+Authors
+## 3 Methods
+Method overview.
+### 3.1 Framework
+Framework details.
+### 3.2 Training
+Training details.
+## 4 Results
+Results overview.
+`);
 
-  assert.deepEqual(result.images, [{ page: 1, label: 'image', bbox: [1, 2, 30, 40], content: '' }]);
-  assert.deepEqual(result.sections.map(({ title, pageStart, pageEnd }) => ({ title, pageStart, pageEnd })), [
-    { title: '未分节内容', pageStart: 1, pageEnd: 1 },
-    { title: '1 Introduction', pageStart: 1, pageEnd: 1 },
-    { title: '2 Method', pageStart: 2, pageEnd: 2 },
+  assert.deepEqual(result.map(({ title, level }) => ({ title, level })), [
+    { title: '3 Methods', level: 2 },
+    { title: '3 Methods / 3.1 Framework', level: 3 },
+    { title: '3 Methods / 3.2 Training', level: 3 },
+    { title: '4 Results', level: 2 },
   ]);
-  assert.match(result.sections[1].text, /Introduction text/);
-  assert.match(result.sections[2].text, /\$x\$/);
+  assert.match(result[0].text, /^## 3 Methods\n\nMethod overview/);
+  assert.match(result[1].text, /^## 3 Methods\n### 3.1 Framework/);
+  assert.doesNotMatch(result[0].text, /Paper title|Authors/);
+});
+
+test('splits long chapters while preserving the H2/H3 context', () => {
+  const paragraphs = Array.from({ length: 80 }, (_, index) => `Paragraph ${index} ${'retrieval context '.repeat(20)}`).join('\n\n');
+  const sections = buildSectionsFromMarkdown(`## 3 Methods\n### 3.2 Framework\n${paragraphs}`);
+  const chunks = splitSectionsForEmbedding(sections);
+
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every((chunk) => chunk.title === '3 Methods / 3.2 Framework'));
+  assert.ok(chunks.every((chunk) => /^## 3 Methods\n### 3.2 Framework/.test(chunk.text)));
 });
 
 test('normalizes vectors and computes cosine similarity', () => {
