@@ -38,6 +38,7 @@ test('splits long chapters while preserving the H2/H3 context', () => {
   const chunks = splitSectionsForEmbedding(sections);
 
   assert.ok(chunks.length > 1);
+  assert.ok(chunks.every((chunk) => chunk.text.length <= 7500));
   assert.ok(chunks.every((chunk) => chunk.title === '3 Methods / 3.2 Framework'));
   assert.ok(chunks.every((chunk) => /^## 3 Methods\n### 3.2 Framework/.test(chunk.text)));
 });

@@ -5,6 +5,7 @@ import { parsePdfWithExpert } from './file-parser.js';
 
 const EMBEDDING_BATCH_SIZE = 64;
 const MAX_EMBEDDING_TOKENS = 2800;
+const MAX_EMBEDDING_CHARS = 7500;
 
 function joinUrl(baseUrl, pathname) {
   return `${baseUrl.replace(/\/+$/, '')}/${pathname.replace(/^\/+/, '')}`;
@@ -123,6 +124,10 @@ function estimateTokens(text) {
   return nonAscii + Math.ceil((value.length - nonAscii) / 4);
 }
 
+function exceedsEmbeddingLimit(text) {
+  return text.length > MAX_EMBEDDING_CHARS || estimateTokens(text) > MAX_EMBEDDING_TOKENS;
+}
+
 function splitSection(section) {
   const prefix = section.text.split(/\n\n/, 1)[0];
   const body = section.text.slice(prefix.length).trim();
@@ -132,13 +137,13 @@ function splitSection(section) {
   let current = '';
   for (const paragraph of paragraphs) {
     const candidate = current ? `${current}\n\n${paragraph}` : paragraph;
-    if (current && estimateTokens(`${prefix}\n\n${candidate}`) > MAX_EMBEDDING_TOKENS) {
+    if (current && exceedsEmbeddingLimit(`${prefix}\n\n${candidate}`)) {
       parts.push(`${prefix}\n\n${current}`);
       current = paragraph;
     } else {
       current = candidate;
     }
-    if (estimateTokens(`${prefix}\n\n${current}`) > MAX_EMBEDDING_TOKENS) {
+    if (exceedsEmbeddingLimit(`${prefix}\n\n${current}`)) {
       throw new Error(`章节内容超过 Embedding-3 单条限制，无法按段落切分：${section.title}`);
     }
   }
