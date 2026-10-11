@@ -14,6 +14,27 @@ test('public settings mask the translation API key', () => {
   assert.equal('apiKey' in result.translation, false);
 });
 
+test('public settings expose Zhipu parser and embedding configuration without keys', () => {
+  const result = publicSettings({
+    translation: { baseUrl: '', model: '', apiKey: '' },
+    rag: {
+      parserBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      parserApiKey: 'secret',
+      embeddingBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      embeddingApiKey: 'secret',
+      embeddingModel: 'embedding-3',
+      embeddingDimensions: 2048,
+      topK: 5,
+    },
+  });
+  assert.equal(result.rag.parserApiKeyConfigured, true);
+  assert.equal(result.rag.embeddingApiKeyConfigured, true);
+  assert.equal(result.rag.embeddingModel, 'embedding-3');
+  assert.equal(result.rag.embeddingDimensions, 2048);
+  assert.equal('parserApiKey' in result.rag, false);
+  assert.equal('embeddingApiKey' in result.rag, false);
+});
+
 test('parses paper metadata JSON returned by pi', () => {
   const result = parseMetadataResponse('```json\n{"title": " Looped Models ", "authors": ["A. Author", ""], "year": 2026}\n```');
   assert.deepEqual(result, { title: 'Looped Models', authors: ['A. Author'], year: '2026' });
