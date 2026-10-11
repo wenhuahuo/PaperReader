@@ -81,7 +81,19 @@ Paper Reader calls:
 POST https://open.bigmodel.cn/api/paas/v4/embeddings
 ```
 
-Requests are batched at 64 texts, with the configured dimensions. Embedding-3 accepts one input up to 3072 tokens; Paper Reader uses a conservative estimate and splits long chapters before requests.
+Requests are batched at 64 texts, with the configured dimensions. Embedding-3 accepts one input up to 3072 tokens; Paper Reader uses a conservative estimate and splits long chapters before requests. A 7500-character cap also applies, because dense English reference lists can exceed the token limit while the estimate stays below it.
+
+The API accepts `input` as a string or a string array; Paper Reader always sends the array form.
+
+## Rebuilding indexes
+
+Papers imported before full-text indexing was introduced have no `rag-index.json`. Use the paper context menu action “重建全文索引” or call:
+
+```text
+POST /api/papers/{id}/reindex
+```
+
+The endpoint re-runs the Expert parse and embedding pipeline against the stored `original.pdf` and overwrites the index. Imports and reindexing can take several minutes; the HTTP server allows requests up to 15 minutes.
 
 ## Retrieval
 
