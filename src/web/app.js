@@ -571,7 +571,16 @@ $('folderButton').addEventListener('click', async () => {
 $('paperMenu').addEventListener('click', async (event) => {
   const paper = state.papers.find((item) => item.id === state.contextPaperId);
   hideMenus();
-  if (!paper || event.target.dataset.action !== 'delete') return;
+  if (!paper) return;
+  if (event.target.dataset.action === 'reindex') {
+    showToast(`正在为“${paper.title}”重建全文索引…`);
+    try {
+      await request(`/api/papers/${paper.id}/reindex`, { method: 'POST' });
+      showToast('全文索引已重建');
+    } catch (error) { showToast(error.message); }
+    return;
+  }
+  if (event.target.dataset.action !== 'delete') return;
   if (!window.confirm(`删除论文“${paper.title}”？`)) return;
   try {
     await request(`/api/papers/${paper.id}`, { method: 'DELETE' });
