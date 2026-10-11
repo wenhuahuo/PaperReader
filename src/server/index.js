@@ -361,6 +361,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.requestTimeout = 15 * 60 * 1000;
 server.listen(port, '127.0.0.1', () => {
   console.log(`Paper Reader running at http://127.0.0.1:${port}`);
 });
