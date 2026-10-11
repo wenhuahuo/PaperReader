@@ -136,6 +136,17 @@ async function importArxivPdf(body) {
   });
 }
 
+async function reindexPaper(paperId) {
+  let pdfBuffer;
+  try {
+    pdfBuffer = await readFile(paperPdfPath(paperId));
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error('未找到论文 PDF 文件，无法重建索引');
+    throw error;
+  }
+  await savePaperRagIndex(paperId, await buildPaperRagIndex(pdfBuffer, paperDirectory(paperId)));
+}
+
 async function readTranslations(paperId) {
   try {
     return JSON.parse(await readFile(translationCachePath(paperId), 'utf8'));
@@ -259,6 +270,11 @@ async function handleApi(req, res, url) {
       target.lastOpenedAt = new Date().toISOString();
     });
     sendJson(res, 200, paperResponse(updated));
+    return;
+  }
+  if (req.method === 'POST' && action === 'reindex') {
+    await reindexPaper(paperId);
+    sendJson(res, 200, paperResponse(paper));
     return;
   }
   if (req.method === 'POST' && action === 'translate') {
