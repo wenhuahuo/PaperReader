@@ -11,12 +11,14 @@ Paper Reader 是一个在本地运行的论文阅读Web应用。应用中可以�
 - 支持导入本地 PDF，也支持粘贴 arXiv 的 `abs` 或 `pdf` 链接。支持文献元信息提取，若文件名或首页文本里带有 arXiv 编号，标题、作者、年份和摘要会从 arXiv 接口补全；否则会把首页文本交给 Pi，由它抽出同样的字段。
 - 阅读器基于 PDF.js：页面纵向排布、可跳页、可缩放，并且直接在 PDF 上选择文字。需要配图时，打开「框选图片」即可把区域截下来，附到下一句提问里。
 - 选区翻译走 OpenAI 兼容接口。翻译是独立的任务，因此结果写在阅读区下方，并将翻译结果缓存在本地，减少重复翻译的token消耗。
+- 导入论文时会调用智谱 Expert 文件解析把 PDF 转成 Markdown，按章节分块后用 Embedding-3 建立本地全文索引，助手因此可以跨章节检索全文，而不限于当前页。
 - 概括全文、精读当前章节、解释图表和自由提问都交给 Pi。回复会流式写出，并按 Markdown 渲染。
 
 ## 环境
 
 - Node.js 22 或更新版本
 - 已安装并完成登录的 [Pi](https://pi.dev)，因为阅读助手通过 Pi 命令行运行
+- [智谱开放平台](https://bigmodel.cn)的 API Key，用于 PDF 解析（Expert）和文本嵌入（Embedding-3）
 - 若要使用选区翻译，还需要一个 OpenAI 兼容的接口
 
 ## 启动
@@ -38,6 +40,26 @@ export TRANSLATION_MODEL="gpt-4o-mini"
 ```
 
 这些项，连同 Pi 的模型编号和思考强度，之后都可以在左侧栏底部的 **设置** 页里改。
+
+## 全文索引（智谱）
+
+启动服务前，先配置智谱 API Key：
+
+```bash
+export GLM_API_KEY="你的智谱Key"
+```
+
+导入论文时，PDF 会交给智谱 Expert 解析，返回的 Markdown 按二级、三级标题分块，再由 Embedding-3 生成向量，写入论文目录下的 `rag-index.json`。当问题超出当前页范围时，Pi 助手会调用 `paper_search` 工具检索最相关的章节，并按章节名引用。
+
+可选的环境变量：
+
+```bash
+export GLM_EMBEDDING_MODEL="embedding-3"
+export GLM_EMBEDDING_DIMENSIONS="2048"   # 可选 256 / 512 / 1024 / 2048
+export RAG_TOP_K="5"
+```
+
+在此功能上线前导入的论文没有索引，可以在文献列表里右键论文，选择「重建全文索引」，用已保存的 PDF 重新构建。
 
 ## Pi agent
 

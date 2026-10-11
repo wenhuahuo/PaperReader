@@ -11,12 +11,14 @@ Paper Reader is a local web app for reading research papers. You can organize a 
 - Import a local PDF, or paste an arXiv `abs` / `pdf` link. Metadata extraction is built in: when the file name or first page contains an arXiv id, title, authors, year, and abstract are filled from the arXiv API; otherwise Pi reads the first page and extracts the same fields.
 - The reader is built on PDF.js. Pages are laid out vertically, with jump-to-page, zoom, and text selection directly on the PDF. When you need a figure, turn on crop mode, box the region, and attach it to the next question.
 - Selection translation uses an OpenAI-compatible API. Translation is a separate task, so the result appears below the reader and is cached locally, which cuts token use on repeated translations.
+- On import, every paper is parsed by Zhipu's Expert file parser, split into chapter-level chunks, and embedded with Embedding-3. The assistant can then search the full text by chapter, not just the current page.
 - Summarizing the paper, close-reading the current section, explaining figures, and free-form questions are all handled by Pi. Replies stream in and render as Markdown.
 
 ## Requirements
 
 - Node.js 22 or newer
 - [Pi](https://pi.dev), already installed and signed in, because the reading assistant runs through the Pi CLI
+- A [Zhipu](https://bigmodel.cn) API key, used for PDF parsing (Expert) and text embeddings (Embedding-3)
 - An OpenAI-compatible endpoint if you want selection translation
 
 ## Setup
@@ -38,6 +40,26 @@ export TRANSLATION_MODEL="gpt-4o-mini"
 ```
 
 These values, together with the Pi model id and thinking level, can later be changed in **Settings** at the bottom of the left sidebar.
+
+## Full-text index (Zhipu)
+
+Set your Zhipu API key before starting the server:
+
+```bash
+export GLM_API_KEY="your-zhipu-key"
+```
+
+On import, the PDF is uploaded to Zhipu's Expert parser, the returned Markdown is split at level-two/level-three headings, and each chunk is embedded with Embedding-3 into a local `rag-index.json` inside the paper's directory. When a question needs more than the current page, the Pi assistant calls its `paper_search` tool to retrieve the most relevant chapters and cites them by section name.
+
+Optional overrides:
+
+```bash
+export GLM_EMBEDDING_MODEL="embedding-3"
+export GLM_EMBEDDING_DIMENSIONS="2048"   # 256 / 512 / 1024 / 2048
+export RAG_TOP_K="5"
+```
+
+Papers imported before this feature have no index. Right-click a paper in the library and choose **重建全文索引** to build one from the stored PDF.
 
 ## Pi agent
 
