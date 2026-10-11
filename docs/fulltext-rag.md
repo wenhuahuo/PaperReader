@@ -1,67 +1,88 @@
-# Full-text RAG services
+# Full-text RAG
 
-Paper Reader builds the full-text index when a paper is imported. It calls the GLM-OCR SDK HTTP server for PDF parsing and a WeMM-Embedding OpenAI-compatible server for section vectors.
+Paper Reader builds a full-text index when a paper is imported. It uses Zhipu's Expert file parser for PDF extraction and Embedding-3 for vectors.
 
-## GLM-OCR
+## Zhipu configuration
 
-Install the official self-hosted SDK and start the OCR model service:
-
-```bash
-pip install "glmocr[selfhosted,server]" "vllm>=0.19.0" "transformers>=5.3.0"
-vllm serve zai-org/GLM-OCR \
-  --port 8080 \
-  --served-model-name glm-ocr \
-  --speculative-config '{"method":"mtp","num_speculative_tokens":3}'
-```
-
-Start the GLM-OCR SDK server with a configuration whose `pipeline.maas.enabled` is `false` and whose `pipeline.ocr_api` points to the vLLM service:
+Set the API key before starting the Node server:
 
 ```bash
-python -m glmocr.server --config config.yaml
+export GLM_API_KEY=...
 ```
 
-The SDK server must expose:
-
-```text
-POST http://127.0.0.1:5002/glmocr/parse
-```
-
-The server performs layout detection, OCR, and structured result formatting. Paper Reader sends rendered PDF pages as data URLs and reads section titles, text, page numbers, and image-region metadata from `json_result`.
-
-## WeMM-Embedding
+Optional overrides:
 
 ```bash
-MODEL_PATH=/path/to/WeMM-Embedding-2B
-vllm serve "$MODEL_PATH" \
-  --runner pooling \
-  --chat-template "$MODEL_PATH/embedding_chat_template.jinja" \
-  --served-model-name WeMM-Embedding-2B
-```
-
-Paper Reader calls the OpenAI-compatible endpoint:
-
-```text
-POST http://127.0.0.1:8000/v1/embeddings
-```
-
-## Paper Reader configuration
-
-Set these environment variables before starting the Node server:
-
-```bash
-export GLM_OCR_BASE_URL=http://127.0.0.1:5002
-export WEMM_EMBEDDING_BASE_URL=http://127.0.0.1:8000/v1
-export WEMM_EMBEDDING_MODEL=WeMM-Embedding-2B
+export GLM_PARSER_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+export GLM_EMBEDDING_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+export GLM_EMBEDDING_MODEL=embedding-3
+export GLM_EMBEDDING_DIMENSIONS=2048
 export RAG_TOP_K=5
 ```
 
-Optional API keys are sent as bearer tokens:
+The parser and embedding requests use the same `GLM_API_KEY`. The API key is never returned by `/api/settings`.
 
-```bash
-export GLM_OCR_API_KEY=...
-export WEMM_EMBEDDING_API_KEY=...
+## Import pipeline
+
+```text
+PDF
+→ Zhipu Expert asynchronous parser
+→ result.md + extracted images
+→ H2/H3 Markdown section parsing
+→ paragraph-level split for long sections
+→ Zhipu Embedding-3
+→ local rag-index.json
 ```
 
-Images detected by GLM-OCR are stored as page, label, bounding-box, and OCR-content metadata. They are not embedded or retrieved.
+The Expert task is uploaded to:
 
-The Pi `paper_search` tool is enabled for paper questions. It embeds the tool query, retrieves the highest-scoring indexed sections, and returns their text, section names, page ranges, and scores to Pi.
+```text
+POST /files/parser/create
+GET  /files/parser/result/{task_id}/download_link
+```
+
+The downloaded result is saved inside the paper directory:
+
+```text
+parse-task.json
+parsed/result.zip
+parsed/result.md
+parsed/images/*
+rag-index.json
+```
+
+Signed result URLs are not persisted. Extracted images are stored as metadata and are not embedded.
+
+## Chunking rules
+
+- Ignore level-one Markdown headings.
+- Use level-two headings as parent chapter boundaries.
+- Use level-three headings as the smallest chapter unit.
+- A level-three chunk includes both its level-two and level-three headings, for example:
+
+```markdown
+## 3 Methods
+### 3.2 Framework
+
+The section text...
+```
+
+- Text directly under a level-two heading is retained as a separate level-two chunk.
+- A long chapter is split at blank-line paragraph boundaries when it approaches the Embedding-3 single-input limit. Every subchunk repeats its level-two and level-three heading context.
+- A single paragraph that still exceeds the limit fails the import instead of being truncated.
+
+The Expert Markdown result does not include reliable page markers. Current full-text results cite chapter names and report page ranges as unknown rather than guessing page numbers.
+
+## Embedding-3
+
+Paper Reader calls:
+
+```text
+POST https://open.bigmodel.cn/api/paas/v4/embeddings
+```
+
+Requests are batched at 64 texts, with the configured dimensions. Embedding-3 accepts one input up to 3072 tokens; Paper Reader uses a conservative estimate and splits long chapters before requests.
+
+## Retrieval
+
+The Pi `paper_search` tool embeds the query, compares it with normalized local vectors, and returns the highest-scoring chapter chunks. Results contain chapter names, content, scores, and `未知` for page citations when the parser did not provide page metadata.
