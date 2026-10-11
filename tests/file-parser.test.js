@@ -62,8 +62,8 @@ test('uploads, polls, downloads without forwarding auth, and persists Expert out
         assert.ok(init.body instanceof FormData);
         return jsonResponse({ task_id: 'task-1', request_id: 'req-1' });
       }
-      if (calls.length === 2) return jsonResponse({ status: 'processing', download_link: 'https://signed.test/ignored' });
-      if (calls.length === 3) return jsonResponse({ status: 'succeeded', download_link: 'https://signed.test/result' });
+      if (calls.length === 2) return jsonResponse({ status: 'processing', parsing_result_url: 'https://signed.test/ignored' });
+      if (calls.length === 3) return jsonResponse({ status: 'succeeded', parsing_result_url: 'https://signed.test/result' });
       assert.equal(url, 'https://signed.test/result');
       assert.equal(init.headers, undefined);
       return zip;
@@ -137,7 +137,7 @@ test('rejects unsafe ZIP paths', async () => {
     const archive = zipResponse({ 'result.md': 'ok', '../outside.jpg': 'bad' });
     const fetchMock = mockFetch((url, init, calls) => {
       if (calls.length === 1) return jsonResponse({ task_id: 'task-traversal' });
-      if (calls.length === 2) return jsonResponse({ status: 'succeeded', download_link: 'https://signed.test/result' });
+      if (calls.length === 2) return jsonResponse({ status: 'succeeded', parsing_result_url: 'https://signed.test/result' });
       return archive;
     });
     try {
@@ -156,7 +156,7 @@ test('rejects missing or empty result.md', async () => {
     const archive = zipResponse({ 'images/figure.jpg': 'image' });
     const fetchMock = mockFetch((url, init, calls) => {
       if (calls.length === 1) return jsonResponse({ task_id: 'task-no-md' });
-      if (calls.length === 2) return jsonResponse({ status: 'succeeded', download_link: 'https://signed.test/result' });
+      if (calls.length === 2) return jsonResponse({ status: 'succeeded', parsing_result_url: 'https://signed.test/result' });
       return archive;
     });
     try {

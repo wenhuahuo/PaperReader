@@ -86,7 +86,7 @@ function statusFrom(payload) {
 }
 
 function downloadLinkFrom(payload) {
-  const link = nestedValue(payload, ['download_link', 'downloadLink', 'download_url', 'downloadUrl']);
+  const link = nestedValue(payload, ['parsing_result_url', 'parsingResultUrl', 'download_link', 'downloadLink', 'download_url', 'downloadUrl']);
   if (typeof link !== 'string' || !link) throw expertError('解析成功响应缺少下载链接');
   return link;
 }
@@ -96,7 +96,7 @@ function withoutSignedLinks(value) {
   if (!value || typeof value !== 'object') return value;
   const result = {};
   for (const [key, child] of Object.entries(value)) {
-    if (/^(download[_-]?(link|url)|signed[_-]?url)$/i.test(key)) continue;
+    if (/^(download[_-]?(link|url)|parsing[_-]?result[_-]?url|signed[_-]?url)$/i.test(key)) continue;
     result[key] = withoutSignedLinks(child);
   }
   return result;
