@@ -167,7 +167,8 @@ async function embedTexts(texts, settings, signal) {
   if (!texts.length) return [];
   const vectors = [];
   for (let start = 0; start < texts.length; start += EMBEDDING_BATCH_SIZE) {
-    const input = texts.slice(start, start + EMBEDDING_BATCH_SIZE);
+    const batch = texts.slice(start, start + EMBEDDING_BATCH_SIZE);
+    const input = texts.length === 1 ? batch[0] : batch;
     const payload = await postJson(
       joinUrl(settings.rag.embeddingBaseUrl, '/embeddings'),
       { model: settings.rag.embeddingModel, input, dimensions: settings.rag.embeddingDimensions },
@@ -176,7 +177,7 @@ async function embedTexts(texts, settings, signal) {
       signal,
     );
     const data = Array.isArray(payload.data) ? [...payload.data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)) : [];
-    if (data.length !== input.length || data.some((item) => !Array.isArray(item.embedding))) {
+    if (data.length !== batch.length || data.some((item) => !Array.isArray(item.embedding))) {
       throw new Error('智谱 Embedding-3 返回的向量数量或格式不正确');
     }
     vectors.push(...data.map((item) => item.embedding.map(Number)));
