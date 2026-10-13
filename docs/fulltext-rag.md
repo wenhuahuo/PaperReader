@@ -82,7 +82,7 @@ Paper Reader calls:
 POST https://open.bigmodel.cn/api/paas/v4/embeddings
 ```
 
-Requests are batched at 64 texts, with the configured dimensions. Embedding-3 accepts one input up to 3072 tokens; Paper Reader uses a conservative estimate and splits long chapters before requests. A 7500-character cap also applies, because dense English reference lists can exceed the token limit while the estimate stays below it.
+Requests are batched at 64 texts, with the configured dimensions. Embedding-3 accepts one input up to 3072 tokens; Paper Reader packs chunks conservatively (4000 characters or an estimated 2800 tokens, whichever hits first). The character budget stays well below the token limit because DOI-heavy reference lists and LaTeX-dense sections tokenize much worse than prose — a 7500-character reference chunk can exceed 3072 tokens while a same-size prose chunk passes.
 
 The API accepts `input` as a string or a string array; Paper Reader always sends the array form.
 
