@@ -68,6 +68,7 @@ The section text...
 ```
 
 - Text directly under a level-two heading is retained as a separate level-two chunk.
+- Expert emits dense tables as HTML `<table>` markup. Tables are converted to Markdown pipe tables before chunking, which removes tag noise and keeps inputs within the Embedding-3 token limit.
 - A long chapter is split at blank-line paragraph boundaries when it approaches the Embedding-3 single-input limit. Every subchunk repeats its level-two and level-three heading context.
 - A single paragraph that still exceeds the limit fails the import instead of being truncated.
 
