@@ -5,7 +5,7 @@ import { parsePdfWithExpert } from './file-parser.js';
 
 const EMBEDDING_BATCH_SIZE = 64;
 const MAX_EMBEDDING_TOKENS = 2800;
-const MAX_EMBEDDING_CHARS = 7500;
+const MAX_EMBEDDING_CHARS = 4000;
 
 function joinUrl(baseUrl, pathname) {
   return `${baseUrl.replace(/\/+$/, '')}/${pathname.replace(/^\/+/, '')}`;
