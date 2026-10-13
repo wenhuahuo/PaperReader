@@ -32,6 +32,23 @@ Results overview.
   assert.doesNotMatch(result[0].text, /Paper title|Authors/);
 });
 
+test('converts Expert HTML tables to Markdown before embedding', () => {
+  const result = buildSectionsFromMarkdown(`## 3 Method
+
+Text before.
+
+<table><tr><td></td><td>\\( M{I}_{0,0} \\)</td></tr><tr><td>DTC</td><td>1.00</td></tr></table>
+
+Text after.`);
+
+  assert.equal(result.length, 1);
+  assert.match(result[0].text, /M\{I\}_\{0,0\}/);
+  assert.match(result[0].text, /\| --- \| --- \|/);
+  assert.match(result[0].text, /\| DTC \| 1\.00 \|/);
+  assert.match(result[0].text, /Text after\./);
+  assert.doesNotMatch(result[0].text, /<table|<td/);
+});
+
 test('splits long chapters while preserving the H2/H3 context', () => {
   const paragraphs = Array.from({ length: 80 }, (_, index) => `Paragraph ${index} ${'retrieval context '.repeat(20)}`).join('\n\n');
   const sections = buildSectionsFromMarkdown(`## 3 Methods\n### 3.2 Framework\n${paragraphs}`);

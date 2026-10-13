@@ -47,6 +47,24 @@ function headingLine(line) {
   return match ? { level: match[1].length, title: match[2] } : null;
 }
 
+function htmlTableToMarkdown(html) {
+  const rows = [];
+  for (const rowMatch of String(html).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...rowMatch[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)]
+      .map((cell) => cell[1].replace(/<[^>]*>/g, '').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim());
+    if (cells.length) rows.push(cells);
+  }
+  if (!rows.length) return html;
+  const width = Math.max(...rows.map((row) => row.length));
+  const lines = rows.map((row) => `| ${[...row, ...Array(width - row.length).fill('')].join(' | ')} |`);
+  lines.splice(1, 0, `| ${Array(width).fill('---').join(' | ')} |`);
+  return lines.join('\n');
+}
+
+function convertHtmlTables(markdown) {
+  return markdown.replace(/<table[\s\S]*?<\/table>/gi, (table) => htmlTableToMarkdown(table));
+}
+
 function hasContent(lines) {
   return lines.some((line) => line.trim());
 }
@@ -83,7 +101,7 @@ export function buildSectionsFromMarkdown(markdown) {
   let current = null;
   let inFence = false;
 
-  for (const line of String(markdown ?? '').split(/\r?\n/)) {
+  for (const line of convertHtmlTables(String(markdown ?? '')).split(/\r?\n/)) {
     if (/^\s*```/.test(line)) {
       inFence = !inFence;
       if (current) current.lines.push(line);
